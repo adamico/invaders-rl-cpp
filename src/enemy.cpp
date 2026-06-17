@@ -5,8 +5,8 @@
 #define ENEMY_RADIUS 15.0f
 #define ENEMY_SCORE_VALUE 100
 
-void Enemy::Init(Vector2 startPos) {
-  pos = startPos;
+void Enemy::Init(Vector2 pos) {
+  this->pos = pos;
   radius = ENEMY_RADIUS;
   scoreValue = ENEMY_SCORE_VALUE;
   active = true;

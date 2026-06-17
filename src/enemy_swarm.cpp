@@ -3,7 +3,6 @@
 #define MAX_ENEMIES_PER_ROW 11
 #define COL_PADDING 80
 #define ROW_PADDING 60
-#define ENEMY_SPEED 50.0f
 
 #define MAX_PROJECTILES 100
 
@@ -15,16 +14,17 @@
   for (Projectile *projectilePtr = projectileArray;                            \
        projectilePtr < projectileArray + MAX_PROJECTILES; projectilePtr++)
 
-void EnemySwarm::Init(Vector2 startSwarmPos) {
-  activeCount = 0;
+void EnemySwarm::Init(Vector2 gridStartPos) {
   direction = (Vector2){1.0f, 0.0f};
   speed = ENEMY_SPEED;
   needToMoveDown = false;
+  activeCount = 0;
+
   for (int enemyIndex = 0; enemyIndex < MAX_ENEMIES; enemyIndex++) {
     int column = enemyIndex % MAX_ENEMIES_PER_ROW;
     int row = enemyIndex / MAX_ENEMIES_PER_ROW;
-    float offsetX = startSwarmPos.x;
-    float offsetY = startSwarmPos.y;
+    float offsetX = gridStartPos.x;
+    float offsetY = gridStartPos.y;
     Vector2 startPos = {offsetX + (column * COL_PADDING),
                         offsetY + (row * ROW_PADDING)};
 
@@ -86,7 +86,7 @@ void EnemySwarm::HandleCollisions(GameState *state) {
     if (CheckCollisionCircles(state->player.pos, state->player.radius,
                               enemy->pos, enemy->radius)) {
       enemy->active = false;
-      // state->currentScene = GAMEOVER;
+      state->currentScene = GAMEOVER;
     }
   }
 }

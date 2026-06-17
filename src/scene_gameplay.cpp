@@ -50,8 +50,8 @@ void CheckIfPlayerWon(GameState *state) {
 }
 
 void UpdateGameplay(GameState *state, float dt) {
-  // CheckIfPlayerDied(state);
-  // CheckIfPlayerWon(state);
+  CheckIfPlayerDied(state);
+  CheckIfPlayerWon(state);
   state->player.Update(state, dt);
   state->swarm.Update(state->swarm.direction, state->swarm.speed, dt);
   state->player.Shoot(state);

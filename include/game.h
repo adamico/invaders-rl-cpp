@@ -7,6 +7,7 @@
 #include "projectile.hpp"
 #include "enemy_swarm.hpp"
 
+#define PLAYER_RADIUS 12.5f
 #define CANVAS_SIZE 50
 #define CANVAS_OFFSET (Vector2){-CANVAS_SIZE / 2.0, -CANVAS_SIZE / 2.0}
 

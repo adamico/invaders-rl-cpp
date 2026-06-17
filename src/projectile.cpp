@@ -3,9 +3,13 @@
 #include "raylib.h"
 #include "raymath.h"
 
-void Projectile::Init(Vector2 startPos, Vector2 direction) {
-  pos = startPos;
-  dir = direction;
+
+
+void Projectile::Init(Vector2 pos, Vector2 dir) {
+  this->pos = pos;
+  this->dir = dir;
+  speed = 500.0f;
+  radius = 5.0f;
   active = true;
 }
 
