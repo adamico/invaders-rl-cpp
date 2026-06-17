@@ -6,16 +6,6 @@
 #include "game.h"
 #include "scene_gameplay.h"
 
-#define CANVAS_SIZE 50
-
-#define CANVAS_OFFSET (Vector2){-CANVAS_SIZE / 2.0, -CANVAS_SIZE / 2.0}
-
-#define PLAYER_RADIUS 12.5f
-#define PLAYER_SPEED 300.0f
-#define PLAYER_HEALTH 5
-#define INITIAL_PLAYER_POS                                                     \
-  (Vector2) { windowSize.x / 2, windowSize.y - (PLAYER_RADIUS * 4) }
-
 #define MAX_ENEMIES_PER_ROW 11
 #define COL_PADDING 80
 #define ROW_PADDING 60
@@ -24,24 +14,13 @@
 #define ENEMY_SCORE_VALUE 100
 #define START_GRID_POS                                                         \
   (Vector2){((windowSize.x - (MAX_ENEMIES_PER_ROW * COL_PADDING)) / 2) +       \
-                (COL_PADDING / 2.0f),                                           \
+                (COL_PADDING / 2.0f),                                          \
             100}
-
-#define FOR_EACH_PROJECTILE(projectilePtr, projectileArray)                    \
-  for (Projectile *projectilePtr = projectileArray;                            \
-       projectilePtr < projectileArray + MAX_PROJECTILES; projectilePtr++)
 
 #define FOR_EACH_ENEMY(enemyPtr, enemyArray)                                   \
   for (Enemy *enemyPtr = enemyArray; enemyPtr < enemyArray + MAX_ENEMIES;      \
        enemyPtr++)
 
-void InitPlayer(GameState *state) {
-  state->player = (Player){.pos = INITIAL_PLAYER_POS,
-                           .radius = PLAYER_RADIUS,
-                           .speed = PLAYER_SPEED,
-                           .dir = {0.0f, 0.0f},
-                           .health = PLAYER_HEALTH};
-}
 
 void InitEnemies(GameState *state) {
   for (int enemyIndex = 0; enemyIndex < MAX_ENEMIES; enemyIndex++) {
@@ -71,56 +50,12 @@ void InitGameplay(GameState *state) {
   InitEnemies(state);
 }
 
-void UpdatePlayer(GameState *state, float dt) {
-  float radius = state->player.radius;
-  float speed = state->player.speed;
-  state->player.dir = Vector2Zero();
-  Vector2 *playerPos = &state->player.pos;
-  Vector2 *playerDir = &state->player.dir;
-
-  if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))
-    playerDir->x -= 1.0f;
-  if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
-    playerDir->x += 1.0f;
-  if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
-    playerDir->y -= 1.0f;
-  if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S))
-    playerDir->y += 1.0f;
-
-  *playerDir = Vector2Normalize(*playerDir);
-  *playerPos = Vector2Add(*playerPos, Vector2Scale(*playerDir, speed * dt));
-  *playerPos =
-      Vector2Clamp(*playerPos, (Vector2){radius, radius},
-                   (Vector2){windowSize.x - radius, windowSize.y - radius});
-};
 
 void DrawOffset(Texture2D texture, Vector2 pos, Color tint) {
   Vector2 drawPos = Vector2Add(pos, CANVAS_OFFSET);
   DrawTextureV(texture, drawPos, tint);
 }
 
-void DrawPlayer(GameState *state) {
-  DrawOffset(state->resources.playerTexture, state->player.pos, WHITE);
-  DrawCircleLinesV(state->player.pos, state->player.radius, RED);
-};
-
-void PlayerShoot(GameState *state) {
-  if (!IsKeyPressed(KEY_SPACE))
-    return;
-
-  PlaySound(state->resources.laserSound);
-  FOR_EACH_PROJECTILE(bullet, state->bullets) {
-    if (bullet->active)
-      continue;
-
-    bullet->active = true;
-    bullet->pos = state->player.pos;
-    bullet->dir = (Vector2){0.0f, -1.0f};
-    bullet->speed = 500.0f;
-    bullet->radius = 5.0f;
-    break;
-  }
-}
 
 void UpdateProjectiles(GameState *state, float dt) {
   FOR_EACH_PROJECTILE(bullet, state->bullets) {
