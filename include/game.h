@@ -16,8 +16,6 @@
   for (Projectile *projectilePtr = projectileArray;                            \
        projectilePtr < projectileArray + MAX_PROJECTILES; projectilePtr++)
 
-extern const Vector2 windowSize;
-
 typedef enum GameScene { TITLE, GAMEPLAY, GAMEOVER } GameScene;
 
 

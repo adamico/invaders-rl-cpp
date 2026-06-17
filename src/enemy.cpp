@@ -20,7 +20,7 @@ bool Enemy::WillHitEdge(Vector2 dir) {
   if (!active)
     return false;
 
-  int rightEdge = windowSize.x - ENEMY_RADIUS;
+  int rightEdge = GetScreenWidth() - ENEMY_RADIUS;
   int leftEdge = ENEMY_RADIUS;
 
   bool willHitRightEdge = (pos.x + radius) >= rightEdge && dir.x > 0;

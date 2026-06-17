@@ -8,7 +8,7 @@
 
 void CenterText(const char *text, int yPos, int fontSize, Color textColor) {
   int textSize = MeasureText(text, fontSize);
-  DrawText(text, (int)windowSize.x / 2 - textSize / 2, yPos, fontSize,
+  DrawText(text, GetScreenWidth() / 2 - textSize / 2, yPos, fontSize,
            textColor);
 }
 
@@ -20,7 +20,7 @@ void UpdateTitle(GameState *state) {
 void DrawTitle(GameState *state) {
   BeginDrawing();
   ClearBackground(BLACK);
-  CenterText(TITLE_TEXT, windowSize.y / 2, 40, WHITE);
-  CenterText(SUBTITLE_TEXT, windowSize.y / 2 + 100, 20, WHITE);
+  CenterText(TITLE_TEXT, GetScreenHeight() / 2, 40, WHITE);
+  CenterText(SUBTITLE_TEXT, GetScreenHeight() / 2 + 100, 20, WHITE);
   EndDrawing();
 }

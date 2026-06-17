@@ -1,4 +1,5 @@
 #include "scene_gameover.h"
+#include "raylib.h"
 
 void UpdateGameover(GameState *state) {
   if (IsKeyPressed(KEY_ENTER)) {
@@ -16,8 +17,8 @@ void DrawGameover(GameState *state) {
     gameOverText = "You Win!";
     textColor = GREEN;
   }
-  CenterText(gameOverText, windowSize.y / 2, 50, textColor);
-  CenterText("Press Enter to go to Title", windowSize.y / 2 + 100, 20,
+  CenterText(gameOverText, GetScreenHeight() / 2, 50, textColor);
+  CenterText("Press Enter to go to Title", GetScreenHeight() / 2 + 100, 20,
              textColor);
   EndDrawing();
 }
