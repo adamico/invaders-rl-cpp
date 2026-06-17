@@ -31,12 +31,9 @@ typedef struct GameState {
   Player player;
   Projectile bullets[MAX_PROJECTILES];
   EnemySwarm swarm;
-  Vector2 enemyDirection;
-  bool needToMoveDown;
-  int enemySpeed;
   GameScene currentScene;
-  bool victory;
   GameResources resources;
+  bool victory;
   int score;
 } GameState;
 

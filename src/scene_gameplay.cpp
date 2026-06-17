@@ -50,7 +50,7 @@ void UpdateGameplay(GameState *state, float dt) {
   CheckIfPlayerDied(state);
   CheckIfPlayerWon(state);
   state->player.Update(state, dt);
-  state->swarm.Update(state->enemyDirection, state->enemySpeed, dt);
+  state->swarm.Update(state->swarm.direction, state->swarm.speed, dt);
   state->player.Shoot(state);
   FOR_EACH_PROJECTILE(bullet, state->bullets) { bullet->Update(dt); }
   state->swarm.HandleCollisions(state);
