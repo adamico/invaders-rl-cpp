@@ -46,7 +46,6 @@ void InitGameplay(GameState *state) {
   state->resources = resBackup;
 
   state->victory = false;
-  InitPlayer(state);
   InitEnemies(state);
 }
 
@@ -172,18 +171,18 @@ void CheckIfPlayerWon(GameState *state) {
   }
 }
 
-void UpdateGameplay(GameState *state, float dt) {
+void UpdateGameplay(GameState* state, float dt) {
   CheckIfPlayerDied(state);
   CheckIfPlayerWon(state);
-  UpdatePlayer(state, dt);
+  state->player.Update(state, dt);
   UpdateEnemies(state, dt);
-  PlayerShoot(state);
+  state->player.Shoot(state);
   UpdateProjectiles(state, dt);
   CheckBulletEnemyCollisions(state);
   CheckPlayerEnemyCollisions(state);
 }
 
-void DrawGameplay(GameState *state) {
+void DrawGameplay(GameState* state) {
   BeginDrawing();
 
   // Setup the back buffer for drawing (clear color and depth buffers)
@@ -191,7 +190,7 @@ void DrawGameplay(GameState *state) {
 
   int font_size = 20;
 
-  DrawPlayer(state);
+  state->player.Draw(state);
   DrawEnemies(state);
   DrawProjectiles(state);
 

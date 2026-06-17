@@ -8,18 +8,18 @@
 #define PLAYER_SPEED 300.0f
 #define PLAYER_HEALTH 5
 
+struct GameState;
+
 // Player definition
-typedef struct Player {
+class Player {
+public:
+  Player();
+  void Update(GameState* state, float dt);
+  void Draw(GameState* state);
+  void Shoot(GameState* state);
   Vector2 pos;
   float radius;
   float speed;
   Vector2 dir;
   int health;
-} Player;
-
-struct GameState;
-
-void InitPlayer(GameState* state);
-void UpdatePlayer(GameState* state, float dt);
-void DrawPlayer(GameState* state);
-void PlayerShoot(GameState* state);
+};
