@@ -4,7 +4,8 @@
 
 class Projectile {
 public:
-  Projectile();
+  Projectile() {};
+  void Init(Vector2 startPos, Vector2 dir);
   void Update(float dt);
   void Draw(struct GameState* state);
 

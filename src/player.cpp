@@ -42,9 +42,9 @@ void Player::Shoot(GameState *state) {
     if (bullet->active)
       continue;
 
-    bullet->active = true;
-    bullet->pos = pos;
-    bullet->dir = (Vector2){0.0f, -1.0f};
+    bullet->Init(pos, (Vector2){0.0f, -1.0f});
+    bullet->speed = 500.0f;
+    bullet->radius = 5.0f;
     break;
   }
 }

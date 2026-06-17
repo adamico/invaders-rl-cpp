@@ -1,12 +1,11 @@
 #include "projectile.hpp"
 #include "game.h"
+#include "raylib.h"
 #include "raymath.h"
 
-Projectile::Projectile() {
-  pos = (Vector2){0.0f, 0.0f};
-  dir = (Vector2){0.0f, 0.0f};
-  speed = 500.0f;
-  radius = 5.0f;
+void Projectile::Init(Vector2 startPos, Vector2 direction) {
+  pos = startPos;
+  dir = direction;
   active = true;
 }
 

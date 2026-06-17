@@ -5,14 +5,10 @@
 #define ENEMY_RADIUS 15.0f
 #define ENEMY_SCORE_VALUE 100
 
-Enemy::Enemy() {
-  active = false;
-  radius = ENEMY_RADIUS;
-  scoreValue = ENEMY_SCORE_VALUE;
-}
-
 void Enemy::Init(Vector2 startPos) {
   pos = startPos;
+  radius = ENEMY_RADIUS;
+  scoreValue = ENEMY_SCORE_VALUE;
   active = true;
 }
 

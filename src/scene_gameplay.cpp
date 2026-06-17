@@ -27,6 +27,9 @@ void InitGameplay(GameState *state) {
   state->victory = false;
   state->player.Init(INITIAL_PLAYER_POS);
   state->swarm.Init(START_SWARM_POSITION);
+  FOR_EACH_PROJECTILE(bullet, state->bullets) {
+    bullet->active = false;
+  }
 }
 
 void DrawOffset(Texture2D texture, Vector2 pos, Color tint) {
@@ -47,8 +50,8 @@ void CheckIfPlayerWon(GameState *state) {
 }
 
 void UpdateGameplay(GameState *state, float dt) {
-  CheckIfPlayerDied(state);
-  CheckIfPlayerWon(state);
+  // CheckIfPlayerDied(state);
+  // CheckIfPlayerWon(state);
   state->player.Update(state, dt);
   state->swarm.Update(state->swarm.direction, state->swarm.speed, dt);
   state->player.Shoot(state);

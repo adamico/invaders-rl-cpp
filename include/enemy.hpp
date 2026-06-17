@@ -4,7 +4,7 @@
 
 class Enemy {
 public:
-  Enemy();
+  Enemy() {};
   void Init(Vector2 startPos);
   void Update(Vector2 dir, float speed,float dt);
   void Draw(struct GameState* state);

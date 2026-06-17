@@ -1,6 +1,5 @@
 #include "game.h"
 
-
 #define MAX_ENEMIES_PER_ROW 11
 #define COL_PADDING 80
 #define ROW_PADDING 60
@@ -17,6 +16,10 @@
        projectilePtr < projectileArray + MAX_PROJECTILES; projectilePtr++)
 
 void EnemySwarm::Init(Vector2 startSwarmPos) {
+  activeCount = 0;
+  direction = (Vector2){1.0f, 0.0f};
+  speed = ENEMY_SPEED;
+  needToMoveDown = false;
   for (int enemyIndex = 0; enemyIndex < MAX_ENEMIES; enemyIndex++) {
     int column = enemyIndex % MAX_ENEMIES_PER_ROW;
     int row = enemyIndex / MAX_ENEMIES_PER_ROW;
@@ -27,9 +30,6 @@ void EnemySwarm::Init(Vector2 startSwarmPos) {
 
     enemies[enemyIndex].Init(startPos);
 
-    direction = (Vector2){1.0f, 0.0f};
-    speed = ENEMY_SPEED;
-    needToMoveDown = false;
     activeCount++;
   }
 }
@@ -54,12 +54,12 @@ void EnemySwarm::Update(Vector2 dir, float speed, float dt) {
   enemy->Update(direction, speed, dt);
 }
 
-void EnemySwarm::Draw(GameState* state) {
+void EnemySwarm::Draw(GameState *state) {
   FOR_EACH_ENEMY(enemy, enemies)
   enemy->Draw(state);
 }
 
-void EnemySwarm::HandleCollisions(GameState* state) {
+void EnemySwarm::HandleCollisions(GameState *state) {
   FOR_EACH_PROJECTILE(bullet, state->bullets) {
     if (!bullet->active)
       continue;
@@ -86,7 +86,7 @@ void EnemySwarm::HandleCollisions(GameState* state) {
     if (CheckCollisionCircles(state->player.pos, state->player.radius,
                               enemy->pos, enemy->radius)) {
       enemy->active = false;
-      state->currentScene = GAMEOVER;
+      // state->currentScene = GAMEOVER;
     }
   }
 }
