@@ -14,9 +14,9 @@ struct GameState;
 class Player {
 public:
   Player();
-  void Update(GameState* state, float dt);
-  void Draw(GameState* state);
-  void Shoot(GameState* state);
+  void Update(struct GameState* state, float dt);
+  void Draw(struct GameState* state);
+  void Shoot(struct GameState* state);
   Vector2 pos;
   float radius;
   float speed;

@@ -10,8 +10,7 @@
 #define COL_PADDING 80
 #define ROW_PADDING 60
 #define ENEMY_SPEED 50.0f
-#define ENEMY_RADIUS 15.0f
-#define ENEMY_SCORE_VALUE 100
+
 #define START_GRID_POS                                                         \
   (Vector2){((windowSize.x - (MAX_ENEMIES_PER_ROW * COL_PADDING)) / 2) +       \
                 (COL_PADDING / 2.0f),                                          \
@@ -21,23 +20,47 @@
   for (Enemy *enemyPtr = enemyArray; enemyPtr < enemyArray + MAX_ENEMIES;      \
        enemyPtr++)
 
-
 void InitEnemies(GameState *state) {
   for (int enemyIndex = 0; enemyIndex < MAX_ENEMIES; enemyIndex++) {
     int column = enemyIndex % MAX_ENEMIES_PER_ROW;
     int row = enemyIndex / MAX_ENEMIES_PER_ROW;
     float offsetX = START_GRID_POS.x;
     float offsetY = START_GRID_POS.y;
-    Enemy enemy = {.pos = (Vector2){offsetX + (column * COL_PADDING),
-                                    offsetY + (row * ROW_PADDING)},
-                   .radius = ENEMY_RADIUS,
-                   .active = true,
-                   .scoreValue = ENEMY_SCORE_VALUE};
-    state->enemies[enemyIndex] = enemy;
+    Vector2 startPos = {offsetX + (column * COL_PADDING),
+                        offsetY + (row * ROW_PADDING)};
+
+    state->enemies[enemyIndex].Init(startPos);
+
     state->enemyDirection = (Vector2){1.0f, 0.0f};
+    state->needToMoveDown = false;
     state->enemySpeed = ENEMY_SPEED;
     state->activeEnemies++;
   }
+}
+
+void UpdateEnemies(GameState *state, float dt) {
+  FOR_EACH_ENEMY(enemy, state->enemies) {
+    if (enemy->WillHitEdge(state->enemyDirection)) {
+      state->enemyDirection.x *= -1.0f;
+      state->needToMoveDown = true;
+      break;
+    }
+  }
+
+  if (state->needToMoveDown) {
+    FOR_EACH_ENEMY(enemy, state->enemies)
+      enemy->MoveDown(ROW_PADDING / 2.0f);
+
+    state->needToMoveDown = false;
+  }
+
+  FOR_EACH_ENEMY(enemy, state->enemies)
+    enemy->Update(state->enemyDirection, state->enemySpeed, dt);
+}
+
+void DrawEnemies(GameState *state) {
+  FOR_EACH_ENEMY(enemy, state->enemies)
+    enemy->Draw(state);
 }
 
 void InitGameplay(GameState *state) {
@@ -49,60 +72,9 @@ void InitGameplay(GameState *state) {
   InitEnemies(state);
 }
 
-
 void DrawOffset(Texture2D texture, Vector2 pos, Color tint) {
   Vector2 drawPos = Vector2Add(pos, CANVAS_OFFSET);
   DrawTextureV(texture, drawPos, tint);
-}
-
-void UpdateEnemies(GameState *state, float dt) {
-  Vector2 direction = state->enemyDirection;
-  int speed = state->enemySpeed;
-  bool needToMoveDown = false;
-  int rightEdge = windowSize.x - ENEMY_RADIUS;
-  int leftEdge = ENEMY_RADIUS;
-  FOR_EACH_ENEMY(enemy, state->enemies) {
-    if (!enemy->active)
-      continue;
-
-    bool willHitRightEdge =
-        (enemy->pos.x + enemy->radius) >= rightEdge && direction.x > 0;
-    bool willHitLeftEdge =
-        (enemy->pos.x - enemy->radius) <= leftEdge && direction.x < 0;
-    if (willHitRightEdge || willHitLeftEdge) {
-      state->enemyDirection.x *= -1.0f;
-      needToMoveDown = true;
-      break;
-    }
-  }
-
-  if (needToMoveDown) {
-    FOR_EACH_ENEMY(enemy, state->enemies) {
-      enemy->pos.y += ROW_PADDING / 2.0;
-      if (enemy->pos.y > windowSize.y) {
-        state->currentScene = GAMEOVER;
-        break;
-      }
-    }
-    needToMoveDown = false;
-  }
-
-  FOR_EACH_ENEMY(enemy, state->enemies) {
-    if (!enemy->active)
-      continue;
-
-    Vector2 *enemyPos = &enemy->pos;
-    *enemyPos = Vector2Add(*enemyPos, Vector2Scale(direction, speed * dt));
-  }
-}
-
-void DrawEnemies(GameState *state) {
-  FOR_EACH_ENEMY(enemy, state->enemies) {
-    if (enemy->active) {
-      DrawOffset(state->resources.enemyTexture, enemy->pos, WHITE);
-      DrawCircleLinesV(enemy->pos, enemy->radius, RED);
-    }
-  }
 }
 
 void CheckBulletEnemyCollisions(GameState *state) {
@@ -151,20 +123,18 @@ void CheckIfPlayerWon(GameState *state) {
   }
 }
 
-void UpdateGameplay(GameState* state, float dt) {
+void UpdateGameplay(GameState *state, float dt) {
   CheckIfPlayerDied(state);
   CheckIfPlayerWon(state);
   state->player.Update(state, dt);
   UpdateEnemies(state, dt);
   state->player.Shoot(state);
-  FOR_EACH_PROJECTILE(bullet, state->bullets) {
-    bullet->Update(dt);
-  }
+  FOR_EACH_PROJECTILE(bullet, state->bullets) { bullet->Update(dt); }
   CheckBulletEnemyCollisions(state);
   CheckPlayerEnemyCollisions(state);
 }
 
-void DrawGameplay(GameState* state) {
+void DrawGameplay(GameState *state) {
   BeginDrawing();
 
   // Setup the back buffer for drawing (clear color and depth buffers)
@@ -174,9 +144,7 @@ void DrawGameplay(GameState* state) {
 
   state->player.Draw(state);
   DrawEnemies(state);
-  FOR_EACH_PROJECTILE(bullet, state->bullets) {
-    bullet->Draw(state);
-  }
+  FOR_EACH_PROJECTILE(bullet, state->bullets) { bullet->Draw(state); }
 
   DrawText(TextFormat("Health: %i", state->player.health), 20,
            windowSize.y - 40, font_size, WHITE);

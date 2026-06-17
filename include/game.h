@@ -2,8 +2,10 @@
 #define GAME_H
 
 #include "raylib.h"
+
 #include "player.hpp"
 #include "projectile.hpp"
+#include "enemy.hpp"
 
 #define CANVAS_SIZE 50
 
@@ -21,15 +23,6 @@ extern const Vector2 windowSize;
 typedef enum GameScene { TITLE, GAMEPLAY, GAMEOVER } GameScene;
 
 
-
-// Enemies
-typedef struct Enemy {
-  Vector2 pos;
-  float radius;
-  bool active;
-  int scoreValue;
-} Enemy;
-
 typedef struct GameResources {
   Texture2D playerTexture;
   Texture2D enemyTexture;
@@ -43,6 +36,7 @@ typedef struct GameState {
   Projectile bullets[MAX_PROJECTILES];
   Enemy enemies[MAX_ENEMIES];
   Vector2 enemyDirection;
+  bool needToMoveDown;
   int enemySpeed;
   int activeEnemies;
   GameScene currentScene;
