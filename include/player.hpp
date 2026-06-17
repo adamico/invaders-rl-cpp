@@ -12,7 +12,7 @@ public:
   void Draw(struct GameState *state);
   void Shoot(struct GameState *state);
 
-  Vector2 pos;
+  Vector2 pos = Vector2Zero();
   float radius = 0.0f;
   float speed = 0.0f;
   Vector2 dir = Vector2Zero();

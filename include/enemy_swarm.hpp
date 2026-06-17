@@ -17,7 +17,7 @@ public:
   void HandleCollisions(struct GameState *state);
 
   Vector2 direction = Vector2Zero();
-  int speed = 0.0f;
+  float speed = 0.0f;
   bool needToMoveDown = false;
   int activeCount = 0;
 
