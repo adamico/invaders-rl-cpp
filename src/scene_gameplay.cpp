@@ -55,26 +55,6 @@ void DrawOffset(Texture2D texture, Vector2 pos, Color tint) {
   DrawTextureV(texture, drawPos, tint);
 }
 
-
-void UpdateProjectiles(GameState *state, float dt) {
-  FOR_EACH_PROJECTILE(bullet, state->bullets) {
-    if (!bullet->active)
-      continue;
-    bullet->pos =
-        Vector2Add(bullet->pos, Vector2Scale(bullet->dir, bullet->speed * dt));
-    bullet->active = bullet->pos.y > 0;
-  }
-}
-
-void DrawProjectiles(GameState *state) {
-  FOR_EACH_PROJECTILE(bullet, state->bullets) {
-    if (bullet->active) {
-      DrawOffset(state->resources.laserTexture, bullet->pos, WHITE);
-      DrawCircleLinesV(bullet->pos, bullet->radius, RED);
-    }
-  }
-}
-
 void UpdateEnemies(GameState *state, float dt) {
   Vector2 direction = state->enemyDirection;
   int speed = state->enemySpeed;
@@ -177,7 +157,9 @@ void UpdateGameplay(GameState* state, float dt) {
   state->player.Update(state, dt);
   UpdateEnemies(state, dt);
   state->player.Shoot(state);
-  UpdateProjectiles(state, dt);
+  FOR_EACH_PROJECTILE(bullet, state->bullets) {
+    bullet->Update(dt);
+  }
   CheckBulletEnemyCollisions(state);
   CheckPlayerEnemyCollisions(state);
 }
@@ -192,7 +174,9 @@ void DrawGameplay(GameState* state) {
 
   state->player.Draw(state);
   DrawEnemies(state);
-  DrawProjectiles(state);
+  FOR_EACH_PROJECTILE(bullet, state->bullets) {
+    bullet->Draw(state);
+  }
 
   DrawText(TextFormat("Health: %i", state->player.health), 20,
            windowSize.y - 40, font_size, WHITE);

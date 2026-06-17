@@ -3,6 +3,7 @@
 
 #include "raylib.h"
 #include "player.hpp"
+#include "projectile.hpp"
 
 #define CANVAS_SIZE 50
 
@@ -20,14 +21,6 @@ extern const Vector2 windowSize;
 typedef enum GameScene { TITLE, GAMEPLAY, GAMEOVER } GameScene;
 
 
-// Bullet
-typedef struct Projectile {
-  Vector2 pos;
-  Vector2 dir;
-  float speed;
-  float radius;
-  bool active;
-} Projectile;
 
 // Enemies
 typedef struct Enemy {
