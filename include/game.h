@@ -5,14 +5,12 @@
 
 #include "player.hpp"
 #include "projectile.hpp"
-#include "enemy.hpp"
+#include "enemy_swarm.hpp"
 
 #define CANVAS_SIZE 50
-
 #define CANVAS_OFFSET (Vector2){-CANVAS_SIZE / 2.0, -CANVAS_SIZE / 2.0}
 
 #define MAX_PROJECTILES 100
-#define MAX_ENEMIES 55
 
 #define FOR_EACH_PROJECTILE(projectilePtr, projectileArray)                    \
   for (Projectile *projectilePtr = projectileArray;                            \
@@ -34,11 +32,10 @@ typedef struct GameResources {
 typedef struct GameState {
   Player player;
   Projectile bullets[MAX_PROJECTILES];
-  Enemy enemies[MAX_ENEMIES];
+  EnemySwarm swarm;
   Vector2 enemyDirection;
   bool needToMoveDown;
   int enemySpeed;
-  int activeEnemies;
   GameScene currentScene;
   bool victory;
   GameResources resources;
