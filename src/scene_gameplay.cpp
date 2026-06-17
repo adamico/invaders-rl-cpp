@@ -5,12 +5,16 @@
 
 #include "game.h"
 #include "scene_gameplay.h"
+#include "player.hpp"
+
+#define INITIAL_PLAYER_POS                                                     \
+  (Vector2) { GetScreenWidth() / 2.0f, GetScreenHeight() - (PLAYER_RADIUS * 4) }
 
 #define MAX_ENEMIES_PER_ROW 11
 #define ROW_PADDING 60
 #define COL_PADDING 80
 
-#define START_SWARM_POSITION                                                         \
+#define START_SWARM_POSITION                                                   \
   (Vector2){                                                                   \
       ((GetScreenWidth() - (MAX_ENEMIES_PER_ROW * COL_PADDING)) / 2.0f) +      \
           (COL_PADDING / 2.0f),                                                \
@@ -21,6 +25,7 @@ void InitGameplay(GameState *state) {
   *state = (GameState){};
   state->resources = resBackup;
   state->victory = false;
+  state->player.Init(INITIAL_PLAYER_POS);
   state->swarm.Init(START_SWARM_POSITION);
 }
 
@@ -64,7 +69,7 @@ void DrawGameplay(GameState *state) {
   FOR_EACH_PROJECTILE(bullet, state->bullets) { bullet->Draw(state); }
 
   DrawText(TextFormat("Health: %i", state->player.health), 20,
-           windowSize.y - 40, font_size, WHITE);
+           GetScreenHeight() - 40, font_size, WHITE);
 
   DrawText(TextFormat("Score: %i", state->score), 20, 20, font_size, WHITE);
   EndDrawing();

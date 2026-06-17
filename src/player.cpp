@@ -2,8 +2,8 @@
 #include "game.h"
 #include "raymath.h"
 
-Player::Player() {
-  pos = INITIAL_PLAYER_POS;
+void Player::Init(Vector2 startPos) {
+  pos = startPos;
   radius = PLAYER_RADIUS;
   speed = PLAYER_SPEED;
   dir = {0.0f, 0.0f};
@@ -25,7 +25,7 @@ void Player::Update(GameState *state, float dt) {
   dir = Vector2Normalize(dir);
   pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
   pos = Vector2Clamp(pos, (Vector2){radius, radius},
-                     (Vector2){windowSize.x - radius, windowSize.y - radius});
+                     (Vector2){GetScreenWidth() - radius, GetScreenHeight() - radius});
 };
 
 void Player::Draw(GameState *state) {
