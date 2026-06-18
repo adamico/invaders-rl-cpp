@@ -21,7 +21,7 @@ void Swarm::reset() {
     int row = enemyIndex / MAX_ENEMIES_PER_ROW;
     float offsetX = startGridPos.x;
     float offsetY = startGridPos.y;
-    pool.items[enemyIndex] = {
+    pool[enemyIndex] = {
         .pos = {offsetX + (col * COL_PADDING), offsetY + (row * ROW_PADDING)},
         .radius = ENEMY_RADIUS,
         .scoreValue = ENEMY_SCORE_VALUE,
@@ -36,7 +36,7 @@ bool Swarm::update(float deltaTime) {
   int rightEdge = GetScreenWidth() - ENEMY_RADIUS;
   int leftEdge = ENEMY_RADIUS;
 
-  for (Enemy& enemy : pool.items) {
+  for (Enemy& enemy : pool) {
     if (!enemy.active) continue;
 
     bool willHitRightEdge =
@@ -51,7 +51,7 @@ bool Swarm::update(float deltaTime) {
   }
 
   if (needToMoveDown) {
-    for (Enemy& enemy : pool.items) {
+    for (Enemy& enemy : pool) {
       enemy.moveVertically(ENEMY_VERTICAL_MOVEMENT);
       if (enemy.pos.y > GetScreenHeight()) {
         breached = true;

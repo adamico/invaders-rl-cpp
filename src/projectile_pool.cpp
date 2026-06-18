@@ -1,7 +1,7 @@
 #include "projectile_pool.h"
 
 void ProjectilePool::reset() {
-  for (auto& projectile : pool.items) {
+  for (auto& projectile : pool) {
     projectile = {.active = false};
   }
 };
