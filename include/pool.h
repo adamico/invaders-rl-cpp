@@ -18,4 +18,14 @@ template <typename T, std::size_t N> struct Pool {
       if (item.active) ++count;
     return count;
   }
+
+  template <typename F> void eachActive(F fn) const {
+    for (const T& item : items)
+      if (item.active) fn(item);
+  }
+
+  template <typename F> void eachActive(F fn) {
+    for (T& item : items)
+      if (item.active) fn(item);
+  }
 };

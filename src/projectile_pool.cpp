@@ -15,13 +15,11 @@ bool ProjectilePool::fire(Vector2 from, Vector2 dir) {
 };
 
 void ProjectilePool::update(float deltaTime) {
-  for (auto& projectile : pool.items) {
-    projectile.update(deltaTime);
-  }
+  pool.eachActive(
+      [&](Projectile& projectile) { projectile.update(deltaTime); });
 }
 
 void ProjectilePool::draw(const Texture2D& texture) const {
-  for (auto& projectile : pool.items) {
-    projectile.draw(texture);
-  }
+  pool.eachActive(
+      [&](const Projectile& projectile) { projectile.draw(texture); });
 }
