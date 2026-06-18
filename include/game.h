@@ -46,8 +46,8 @@ struct GameResources {
   GameResources();
   ~GameResources();
 
-  GameResources(const GameResources &) = delete;
-  GameResources &operator=(const GameResources &) = delete;
+  GameResources(const GameResources&) = delete;
+  GameResources& operator=(const GameResources&) = delete;
 };
 
 typedef struct GameState {
@@ -63,7 +63,7 @@ typedef struct GameState {
   int score;
 } GameState;
 
-void CenterText(const char *text, int yPos, int fontSize, Color textColor);
-void InitGameplay(GameState *state);
+void CenterText(const char* text, int yPos, int fontSize, Color textColor);
+void InitGameplay(GameState* state);
 
 #endif

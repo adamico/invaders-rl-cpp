@@ -28,14 +28,14 @@
             100}
 
 #define FOR_EACH_PROJECTILE(projectilePtr, projectileArray)                    \
-  for (Projectile *projectilePtr = projectileArray;                            \
+  for (Projectile* projectilePtr = projectileArray;                            \
        projectilePtr < projectileArray + MAX_PROJECTILES; projectilePtr++)
 
 #define FOR_EACH_ENEMY(enemyPtr, enemyArray)                                   \
-  for (Enemy *enemyPtr = enemyArray; enemyPtr < enemyArray + MAX_ENEMIES;      \
+  for (Enemy* enemyPtr = enemyArray; enemyPtr < enemyArray + MAX_ENEMIES;      \
        enemyPtr++)
 
-void InitPlayer(GameState *state) {
+void InitPlayer(GameState* state) {
   state->player = (Player){.pos = INITIAL_PLAYER_POS,
                            .radius = PLAYER_RADIUS,
                            .speed = PLAYER_SPEED,
@@ -43,7 +43,7 @@ void InitPlayer(GameState *state) {
                            .health = PLAYER_HEALTH};
 }
 
-void InitEnemies(GameState *state) {
+void InitEnemies(GameState* state) {
   for (int enemyIndex = 0; enemyIndex < MAX_ENEMIES; enemyIndex++) {
     int column = enemyIndex % MAX_ENEMIES_PER_ROW;
     int row = enemyIndex / MAX_ENEMIES_PER_ROW;
@@ -61,13 +61,13 @@ void InitEnemies(GameState *state) {
   }
 }
 
-void InitBullets(GameState *state) {
+void InitBullets(GameState* state) {
   for (int bulletIndex = 0; bulletIndex < MAX_PROJECTILES; bulletIndex++) {
     state->bullets[bulletIndex] = {.active = false};
   }
 }
 
-void InitGameplay(GameState *state) {
+void InitGameplay(GameState* state) {
   state->score = 0;
   state->victory = false;
   state->activeEnemies = 0;
@@ -76,12 +76,12 @@ void InitGameplay(GameState *state) {
   InitBullets(state);
 }
 
-void UpdatePlayer(GameState *state, float dt) {
+void UpdatePlayer(GameState* state, float dt) {
   float radius = state->player.radius;
   float speed = state->player.speed;
   state->player.dir = Vector2Zero();
-  Vector2 *playerPos = &state->player.pos;
-  Vector2 *playerDir = &state->player.dir;
+  Vector2* playerPos = &state->player.pos;
+  Vector2* playerDir = &state->player.dir;
 
   if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))
     playerDir->x -= 1.0f;
@@ -104,12 +104,12 @@ void DrawOffset(Texture2D texture, Vector2 pos, Color tint) {
   DrawTextureV(texture, drawPos, tint);
 }
 
-void DrawPlayer(GameState *state) {
+void DrawPlayer(GameState* state) {
   DrawOffset(state->resources.playerTexture, state->player.pos, WHITE);
   DrawCircleLinesV(state->player.pos, state->player.radius, RED);
 };
 
-void PlayerShoot(GameState *state) {
+void PlayerShoot(GameState* state) {
   if (!IsKeyPressed(KEY_SPACE))
     return;
 
@@ -127,7 +127,7 @@ void PlayerShoot(GameState *state) {
   }
 }
 
-void UpdateProjectiles(GameState *state, float dt) {
+void UpdateProjectiles(GameState* state, float dt) {
   FOR_EACH_PROJECTILE(bullet, state->bullets) {
     if (!bullet->active)
       continue;
@@ -137,7 +137,7 @@ void UpdateProjectiles(GameState *state, float dt) {
   }
 }
 
-void DrawProjectiles(GameState *state) {
+void DrawProjectiles(GameState* state) {
   FOR_EACH_PROJECTILE(bullet, state->bullets) {
     if (bullet->active) {
       DrawOffset(state->resources.laserTexture, bullet->pos, WHITE);
@@ -146,7 +146,7 @@ void DrawProjectiles(GameState *state) {
   }
 }
 
-void UpdateEnemies(GameState *state, float dt) {
+void UpdateEnemies(GameState* state, float dt) {
   Vector2 direction = state->enemyDirection;
   int speed = state->enemySpeed;
   bool needToMoveDown = false;
@@ -182,12 +182,12 @@ void UpdateEnemies(GameState *state, float dt) {
     if (!enemy->active)
       continue;
 
-    Vector2 *enemyPos = &enemy->pos;
+    Vector2* enemyPos = &enemy->pos;
     *enemyPos = Vector2Add(*enemyPos, Vector2Scale(direction, speed * dt));
   }
 }
 
-void DrawEnemies(GameState *state) {
+void DrawEnemies(GameState* state) {
   FOR_EACH_ENEMY(enemy, state->enemies) {
     if (enemy->active) {
       DrawOffset(state->resources.enemyTexture, enemy->pos, WHITE);
@@ -196,7 +196,7 @@ void DrawEnemies(GameState *state) {
   }
 }
 
-void CheckBulletEnemyCollisions(GameState *state) {
+void CheckBulletEnemyCollisions(GameState* state) {
   FOR_EACH_PROJECTILE(bullet, state->bullets) {
     if (!bullet->active)
       continue;
@@ -217,7 +217,7 @@ void CheckBulletEnemyCollisions(GameState *state) {
   }
 }
 
-void CheckPlayerEnemyCollisions(GameState *state) {
+void CheckPlayerEnemyCollisions(GameState* state) {
   FOR_EACH_ENEMY(enemy, state->enemies) {
     if (!enemy->active)
       continue;
@@ -230,19 +230,19 @@ void CheckPlayerEnemyCollisions(GameState *state) {
   }
 }
 
-void CheckIfPlayerDied(GameState *state) {
+void CheckIfPlayerDied(GameState* state) {
   if (state->player.health <= 0)
     state->currentScene = GAMEOVER;
 }
 
-void CheckIfPlayerWon(GameState *state) {
+void CheckIfPlayerWon(GameState* state) {
   if (state->activeEnemies <= 0) {
     state->victory = true;
     state->currentScene = GAMEOVER;
   }
 }
 
-void UpdateGameplay(GameState *state, float dt) {
+void UpdateGameplay(GameState* state, float dt) {
   CheckIfPlayerDied(state);
   CheckIfPlayerWon(state);
   UpdatePlayer(state, dt);
@@ -253,7 +253,7 @@ void UpdateGameplay(GameState *state, float dt) {
   CheckPlayerEnemyCollisions(state);
 }
 
-void DrawGameplay(GameState *state) {
+void DrawGameplay(GameState* state) {
   BeginDrawing();
 
   // Setup the back buffer for drawing (clear color and depth buffers)
