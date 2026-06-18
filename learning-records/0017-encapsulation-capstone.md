@@ -28,6 +28,19 @@ Builds, runs, behaviour identical.
    (state.swarm.pool.items). This was the EXPECTED proof-of-encapsulation error; user understood once
    pointed at it, fixed the last site. Reinforced that the compiler error IS the verification.
 
+**Coda — Demeter forwarding + one level up (recursion of the principle):**
+After the Pool capstone, recursed the same move one level out. Swarm/ProjectilePool were
+reaching-through targets: callers did `state.swarm.pool.begin()` etc. Added forwarding
+`begin()`/`end()` (+const) and `activeCount()` on Swarm/ProjectilePool that delegate to the
+inner pool — Law of Demeter, callers talk only to the immediate object. Then dropped every
+`.pool` from callers (last straggler scene_gameplay.cpp:108). With no external reach-in left,
+made the data private: `struct Swarm` -> `class Swarm`, and put `pool`/`direction`/`speed`
+under `private:` (ProjectilePool kept `struct` + explicit `private:` — same effect, access is
+default-only). Grep confirmed 0 external `.pool` / `direction` / `speed` access (the lone
+`.speed = PLAYER_SPEED` hit is Player init, false positive). Builds, runs identical.
+The point: encapsulation composes — Pool hides its array, Swarm/ProjectilePool hide their Pool;
+no caller anywhere touches representation, only operations.
+
 **Status:** Pool is now a clean, fully-encapsulated generic container (acquire / activeCount / eachActive
 / begin-end / operator[]; private items). The C++ idiomatic-refactor arc is essentially COMPLETE — 16
 lessons: RAII, constexpr, range-for, const, entities, scene polymorphism, SceneManager, return-next,

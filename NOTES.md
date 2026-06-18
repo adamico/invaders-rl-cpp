@@ -65,7 +65,9 @@
     (begin/end +const, operator[] +const, struct->class). 5 sites converted. NEW mechanics: range-for
     protocol, operator overloading, struct-vs-class. Hiccups: (a) misread collapsed-body `;` shorthand
     as "split to .cpp" - clarified templates are header-only; (b) missed scene_gameplay:122 -> private
-    error (the expected proof). See LR-0017.
+    error (the expected proof). CODA (+2): Demeter forwarding (begin/end/activeCount on Swarm+
+   ProjectilePool) -> dropped all caller `.pool` -> made pool/direction/speed PRIVATE (struct->
+   class Swarm). Encapsulation now composes one level up. See LR-0017.
 LESSON-WRITING FEEDBACK: in "final shape" summary blocks, DON'T abbreviate template method bodies to a
 bare `;` - reads as "move to .cpp" which is impossible for templates. Show real bodies / mark elision.
 === C++ IDIOMATIC-REFACTOR ARC COMPLETE (16 lessons). ===
