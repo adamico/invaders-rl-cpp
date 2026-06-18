@@ -1,9 +1,10 @@
 #include "raylib.h"
 #include "resource_dir.h"
+#include <stdio.h>
+
 #include "scene_gameover.h"
 #include "scene_gameplay.h"
 #include "scene_title.h"
-#include <stdio.h>
 
 const Vector2 windowSize = {1280, 720};
 const char *gameName = "Invaders RL";

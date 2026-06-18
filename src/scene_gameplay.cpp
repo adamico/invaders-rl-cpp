@@ -4,8 +4,8 @@
 #include <stdio.h>
 
 #include "game.h"
-#include "scene_gameplay.h"
 #include "player.hpp"
+#include "scene_gameplay.h"
 
 #define INITIAL_PLAYER_POS                                                     \
   (Vector2) { GetScreenWidth() / 2.0f, GetScreenHeight() - (PLAYER_RADIUS * 4) }
@@ -27,9 +27,7 @@ void InitGameplay(GameState *state) {
   state->victory = false;
   state->player.Init(INITIAL_PLAYER_POS);
   state->swarm.Init(START_SWARM_POSITION);
-  FOR_EACH_PROJECTILE(bullet, state->bullets) {
-    bullet->active = false;
-  }
+  FOR_EACH_PROJECTILE(bullet, state->bullets) { bullet->active = false; }
 }
 
 void DrawOffset(Texture2D texture, Vector2 pos, Color tint) {

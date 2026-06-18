@@ -25,9 +25,7 @@ bool Enemy::WillHitEdge(Vector2 dir) {
   return willHitRightEdge || willHitLeftEdge;
 }
 
-void Enemy::MoveDown(float amount) {
-  pos.y += amount;
-}
+void Enemy::MoveDown(float amount) { pos.y += amount; }
 
 void Enemy::Update(Vector2 dir, float speed, float dt) {
   if (!active)

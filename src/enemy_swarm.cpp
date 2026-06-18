@@ -35,6 +35,7 @@ void EnemySwarm::Init(Vector2 gridStartPos) {
 }
 
 void EnemySwarm::Update(Vector2 dir, float speed, float dt) {
+  // 1. Edge check
   FOR_EACH_ENEMY(enemy, enemies) {
     if (enemy->WillHitEdge(direction)) {
       direction.x *= -1.0f;
@@ -43,15 +44,15 @@ void EnemySwarm::Update(Vector2 dir, float speed, float dt) {
     }
   }
 
-  if (needToMoveDown) {
-    FOR_EACH_ENEMY(enemy, enemies)
-    enemy->MoveDown(ROW_PADDING / 2.0f);
+  // 2. Move horizontally and down if needed
+  FOR_EACH_ENEMY(enemy, enemies) {
+    if (needToMoveDown) {
+      enemy->MoveDown(ROW_PADDING / 2.0f);
+      needToMoveDown = false;
+    }
 
-    needToMoveDown = false;
+    enemy->Update(direction, speed, dt);
   }
-
-  FOR_EACH_ENEMY(enemy, enemies)
-  enemy->Update(direction, speed, dt);
 }
 
 void EnemySwarm::Draw(GameState *state) {
