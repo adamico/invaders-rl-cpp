@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "hud.h"
 #include "scene_gameover.h"
 #include "scene_gameplay.h"
 
@@ -148,18 +149,11 @@ std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
 void SceneGameplay::draw(const GameState& state) const {
   BeginDrawing();
 
-  // Setup the back buffer for drawing (clear color and depth buffers)
   ClearBackground(BLACK);
-
-  int font_size = 20;
-
   state.player.draw(state.resources.playerTexture);
   state.swarm.draw(state.resources.enemyTexture);
   state.projectilePool.draw(state.resources.laserTexture);
+  drawHud(state.player.health, state.score);
 
-  DrawText(TextFormat("Health: %i", state.player.health), 20,
-           GetScreenHeight() - 40, font_size, WHITE);
-
-  DrawText(TextFormat("Score: %i", state.score), 20, 20, font_size, WHITE);
   EndDrawing();
 }
