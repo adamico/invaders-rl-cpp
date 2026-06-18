@@ -30,9 +30,10 @@
 8. [DONE L0008] update() returns unique_ptr<Scene> -> killed makeScene switch + GameScene enum +
    state.currentScene + shown_. Hurdle (see LR-0009): derived-header return types, deep-void-helper
    condition pattern, double-update bug. Lesson patched to be self-contained.
-9. [LESSON DELIVERED L0009, awaiting apply] SRP: extract enemy Swarm class (reset/update/draw, new
-   swarm.h+.cpp), shrink GameState (4 fields -> Swarm member). Swarm::update returns bool breached
-   (scene decides death). Collisions stay FREE (C.4/C.5). Future SRP arcs: ProjectilePool, HUD overlay.
+9. [DONE L0009] SRP: extracted enemy Swarm class (reset/update/draw, swarm.h+.cpp), GameState shrank
+   4 fields -> Swarm member. Swarm::update returns bool breached (scene decides death). Collisions
+   stay FREE (C.4/C.5). User self-resolved include cycle better than lesson (moved Enemy+MAX_ENEMIES
+   into swarm.h, self-contained). One-pass, no hurdle. See LR-0010.
 Possible future arcs (confirm with user before starting a new mission):
 - ProjectilePool class; HUD as own helper/overlay scene; collision system; per-scene state (pause).
 - Per-scene state as class members (pause menu, settings, level-complete).
