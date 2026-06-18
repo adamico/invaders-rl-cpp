@@ -102,7 +102,7 @@ void Enemy::draw(const Texture2D& texture) const {
 }
 
 void detectBulletEnemyCollisions(GameState& state) {
-  for (Projectile& bullet : state.projectilePool.pool) {
+  for (Projectile& bullet : state.projectilePool) {
     if (!bullet.active) continue;
 
     for (Enemy& enemy : state.swarm.pool) {
@@ -119,7 +119,7 @@ void detectBulletEnemyCollisions(GameState& state) {
 }
 
 void detectPlayerEnemyCollisions(GameState& state) {
-  for (Enemy& enemy : state.swarm.pool) {
+  for (Enemy& enemy : state.swarm) {
     if (!enemy.active) continue;
 
     if (overlaps(state.player, enemy)) {

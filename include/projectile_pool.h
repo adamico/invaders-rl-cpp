@@ -14,4 +14,9 @@ struct ProjectilePool {
   void draw(const Texture2D& texture) const;
   bool fire(Vector2 from, Vector2 dir = {0.0f, -1.0f});
   int activeCount() const { return pool.activeCount(); }
+
+  auto begin() { return pool.begin(); }
+  auto end() { return pool.end(); }
+  auto begin() const { return pool.begin(); }
+  auto end() const { return pool.end(); }
 };
