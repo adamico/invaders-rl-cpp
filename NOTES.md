@@ -39,10 +39,10 @@
     Applied FROM MEMORY (retrieval practice worked). User added dir param to fire (enemies-shoot hook).
     First pass leaked pool internals in PlayerShoot (kept slot loop + unconditional sound); corrected.
     See LR-0011.
-11. [LESSON DELIVERED L0011, awaiting apply] HUD extraction — the "when NOT to make a class" lesson.
-    HUD owns no state -> FREE function drawHud(int score, int health) in hud.h/.cpp, NOT a class.
-    Takes primitives not GameState& (zero coupling, hud.h includes nothing game-specific). Boundary:
-    HUD draws into frame; scene owns Begin/EndDrawing lifecycle. Reinforces C.4 from the other side.
+11. [DONE L0011] HUD extraction — "when NOT to make a class." Stateless -> FREE function
+    drawHud(health, score), primitives not GameState&, hud.h includes nothing game-specific. Applied
+    clean in one pass, user called it easy. CALIBRATION: SRP/class-vs-free judgment now solid; pure-rep
+    lessons add little -> next lessons need genuinely NEW mechanics (scene stack, templates). LR-0012.
 Possible future arcs (confirm with user before starting a new mission):
 - Per-scene state / pause overlay (scene stack); collision system; shared text helper; templated pool.
 - Per-scene state as class members (pause menu, settings, level-complete).
