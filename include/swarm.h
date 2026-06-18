@@ -13,4 +13,5 @@ struct Swarm {
   void reset();
   bool update(float deltaTime);
   void draw(const Texture2D& texture) const;
+  void deactivate(Enemy& enemy);
 };

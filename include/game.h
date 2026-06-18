@@ -25,6 +25,7 @@ struct Projectile {
   void spawn(Vector2 from, Vector2 dir = {0.0f, -1.0f});
   void update(float deltaTime);
   void draw(const Texture2D& texture) const;
+  void deactivate() { active = false; };
 };
 
 struct Enemy {

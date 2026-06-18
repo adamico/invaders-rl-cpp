@@ -39,8 +39,7 @@ bool Swarm::update(float deltaTime) {
   int rightEdge = GetScreenWidth() - ENEMY_RADIUS;
   int leftEdge = ENEMY_RADIUS;
   for (Enemy& enemy : enemies) {
-    if (!enemy.active)
-      continue;
+    if (!enemy.active) continue;
 
     bool willHitRightEdge =
         (enemy.pos.x + enemy.radius) >= rightEdge && direction.x > 0;
@@ -64,8 +63,7 @@ bool Swarm::update(float deltaTime) {
   }
 
   for (Enemy& enemy : enemies) {
-    if (!enemy.active)
-      continue;
+    if (!enemy.active) continue;
 
     enemy.moveHorizontally(direction, speed, deltaTime);
   }
@@ -77,4 +75,11 @@ void Swarm::draw(const Texture2D& texture) const {
   for (const Enemy& enemy : enemies) {
     enemy.draw(texture);
   }
+}
+
+void Swarm::deactivate(Enemy& enemy) {
+  if (!enemy.active) return;
+
+  enemy.active = false;
+  activeCount--;
 }

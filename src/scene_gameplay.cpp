@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "hud.h"
+#include "projectile_pool.h"
 #include "scene_gameover.h"
 #include "scene_gameplay.h"
 
@@ -34,14 +35,10 @@ void InitGameplay(GameState* state) {
 void Player::update(float dt) {
   dir = Vector2Zero();
 
-  if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))
-    dir.x -= 1.0f;
-  if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
-    dir.x += 1.0f;
-  if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
-    dir.y -= 1.0f;
-  if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S))
-    dir.y += 1.0f;
+  if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) dir.x -= 1.0f;
+  if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) dir.x += 1.0f;
+  if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) dir.y -= 1.0f;
+  if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) dir.y += 1.0f;
 
   dir = Vector2Normalize(dir);
   pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
@@ -61,23 +58,20 @@ void Player::draw(const Texture2D& texture) const {
 };
 
 void PlayerShoot(GameState& state) {
-  if (!IsKeyPressed(KEY_SPACE))
-    return;
+  if (!IsKeyPressed(KEY_SPACE)) return;
 
   if (state.projectilePool.fire(state.player.pos, {0.0f, -1.0f}))
     PlaySound(state.resources.laserSound);
 }
 
 void Projectile::update(float dt) {
-  if (!active)
-    return;
+  if (!active) return;
   pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
   active = pos.y > 0;
 }
 
 void Projectile::draw(const Texture2D& texture) const {
-  if (!active)
-    return;
+  if (!active) return;
   DrawOffset(texture, pos, WHITE);
   DrawCircleLinesV(pos, radius, RED);
 }
@@ -89,27 +83,23 @@ void Enemy::moveHorizontally(Vector2 dir, float speed, float deltaTime) {
 void Enemy::moveVertically(float amount) { pos.y += amount; }
 
 void Enemy::draw(const Texture2D& texture) const {
-  if (!active)
-    return;
+  if (!active) return;
   DrawOffset(texture, pos, WHITE);
   DrawCircleLinesV(pos, radius, RED);
 }
 
 void CheckBulletEnemyCollisions(GameState& state) {
   for (Projectile& bullet : state.projectilePool.projectiles) {
-    if (!bullet.active)
-      continue;
+    if (!bullet.active) continue;
 
     for (Enemy& enemy : state.swarm.enemies) {
-      if (!enemy.active)
-        continue;
+      if (!enemy.active) continue;
 
       if (CheckCollisionCircles(bullet.pos, bullet.radius, enemy.pos,
                                 enemy.radius)) {
         PlaySound(state.resources.explosionSound);
-        bullet.active = false;
-        enemy.active = false;
-        state.swarm.activeCount--;
+        bullet.deactivate();
+        state.swarm.deactivate(enemy);
         state.score += enemy.scoreValue;
       }
     }
@@ -118,28 +108,25 @@ void CheckBulletEnemyCollisions(GameState& state) {
 
 void CheckPlayerEnemyCollisions(GameState& state) {
   for (Enemy& enemy : state.swarm.enemies) {
-    if (!enemy.active)
-      continue;
+    if (!enemy.active) continue;
 
     if (CheckCollisionCircles(state.player.pos, state.player.radius, enemy.pos,
                               enemy.radius)) {
-      enemy.active = false;
+      state.swarm.deactivate(enemy);
       state.player.health = 0;
     }
   }
 }
 
 std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
-  if (state.swarm.update(dt))
-    state.player.health = 0;
+  if (state.swarm.update(dt)) state.player.health = 0;
   state.player.update(dt);
   PlayerShoot(state);
   state.projectilePool.update(dt);
   CheckBulletEnemyCollisions(state);
   CheckPlayerEnemyCollisions(state);
 
-  if (state.swarm.activeCount <= 0)
-    state.victory = true;
+  if (state.swarm.activeCount <= 0) state.victory = true;
   if (state.victory || state.player.health <= 0)
     return std::make_unique<SceneGameover>();
 
