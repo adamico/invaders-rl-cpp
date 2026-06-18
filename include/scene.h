@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game.h"
+#include "game_state.h"
 #include <memory>
 
 struct Scene {
