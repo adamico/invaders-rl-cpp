@@ -3,7 +3,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include "game.h"
 #include "scene_gameplay.h"
 
 constexpr int CANVAS_SIZE = 50;
@@ -101,16 +100,16 @@ void Player::draw(const Texture2D& texture) const {
   DrawCircleLinesV(pos, radius, RED);
 };
 
-void PlayerShoot(GameState* state) {
+void PlayerShoot(GameState& state) {
   if (!IsKeyPressed(KEY_SPACE))
     return;
 
-  PlaySound(state->resources.laserSound);
-  for (Projectile& bullet : state->bullets) {
+  PlaySound(state.resources.laserSound);
+  for (Projectile& bullet : state.bullets) {
     if (bullet.active)
       continue;
 
-    bullet.spawn(state->player.pos);
+    bullet.spawn(state.player.pos);
     break;
   }
 }
@@ -137,15 +136,15 @@ void Projectile::draw(const Texture2D& texture) const {
   DrawCircleLinesV(pos, radius, RED);
 }
 
-void UpdateProjectiles(GameState* state, float dt) {
-  for (Projectile& bullet : state->bullets) {
+void UpdateProjectiles(GameState& state, float dt) {
+  for (Projectile& bullet : state.bullets) {
     bullet.update(dt);
   }
 }
 
-void DrawProjectiles(const GameState* state) {
-  for (const Projectile& bullet : state->bullets) {
-    bullet.draw(state->resources.laserTexture);
+void DrawProjectiles(const GameState& state) {
+  for (const Projectile& bullet : state.bullets) {
+    bullet.draw(state.resources.laserTexture);
   }
 }
 
@@ -162,13 +161,13 @@ void Enemy::draw(const Texture2D& texture) const {
   DrawCircleLinesV(pos, radius, RED);
 }
 
-void UpdateEnemies(GameState* state, float dt) {
-  Vector2 direction = state->enemyDirection;
-  float speed = state->enemySpeed;
+void UpdateEnemies(GameState& state, float dt) {
+  Vector2 direction = state.enemyDirection;
+  float speed = state.enemySpeed;
   bool needToMoveDown = false;
   int rightEdge = GetScreenWidth() - ENEMY_RADIUS;
   int leftEdge = ENEMY_RADIUS;
-  for (Enemy& enemy : state->enemies) {
+  for (Enemy& enemy : state.enemies) {
     if (!enemy.active)
       continue;
 
@@ -177,24 +176,24 @@ void UpdateEnemies(GameState* state, float dt) {
     bool willHitLeftEdge =
         (enemy.pos.x - enemy.radius) <= leftEdge && direction.x < 0;
     if (willHitRightEdge || willHitLeftEdge) {
-      state->enemyDirection.x *= -1.0f;
+      state.enemyDirection.x *= -1.0f;
       needToMoveDown = true;
       break;
     }
   }
 
   if (needToMoveDown) {
-    for (Enemy& enemy : state->enemies) {
+    for (Enemy& enemy : state.enemies) {
       enemy.moveVertically(ENEMY_VERTICAL_MOVEMENT);
       if (enemy.pos.y > GetScreenHeight()) {
-        state->currentScene = GAMEOVER;
+        state.currentScene = GameScene::GAMEOVER;
         break;
       }
     }
     needToMoveDown = false;
   }
 
-  for (Enemy& enemy : state->enemies) {
+  for (Enemy& enemy : state.enemies) {
     if (!enemy.active)
       continue;
 
@@ -202,62 +201,62 @@ void UpdateEnemies(GameState* state, float dt) {
   }
 }
 
-void DrawEnemies(const GameState* state) {
-  for (const Enemy& enemy : state->enemies) {
-    enemy.draw(state->resources.enemyTexture);
+void DrawEnemies(const GameState& state) {
+  for (const Enemy& enemy : state.enemies) {
+    enemy.draw(state.resources.enemyTexture);
   }
 }
 
-void CheckBulletEnemyCollisions(GameState* state) {
-  for (Projectile& bullet : state->bullets) {
+void CheckBulletEnemyCollisions(GameState& state) {
+  for (Projectile& bullet : state.bullets) {
     if (!bullet.active)
       continue;
 
-    for (Enemy& enemy : state->enemies) {
+    for (Enemy& enemy : state.enemies) {
       if (!enemy.active)
         continue;
 
       if (CheckCollisionCircles(bullet.pos, bullet.radius, enemy.pos,
                                 enemy.radius)) {
-        PlaySound(state->resources.explosionSound);
+        PlaySound(state.resources.explosionSound);
         bullet.active = false;
         enemy.active = false;
-        state->activeEnemies--;
-        state->score += enemy.scoreValue;
+        state.activeEnemies--;
+        state.score += enemy.scoreValue;
       }
     }
   }
 }
 
-void CheckPlayerEnemyCollisions(GameState* state) {
-  for (Enemy& enemy : state->enemies) {
+void CheckPlayerEnemyCollisions(GameState& state) {
+  for (Enemy& enemy : state.enemies) {
     if (!enemy.active)
       continue;
 
-    if (CheckCollisionCircles(state->player.pos, state->player.radius,
-                              enemy.pos, enemy.radius)) {
+    if (CheckCollisionCircles(state.player.pos, state.player.radius, enemy.pos,
+                              enemy.radius)) {
       enemy.active = false;
-      state->currentScene = GAMEOVER;
+      state.currentScene = GameScene::GAMEOVER;
     }
   }
 }
 
-void CheckIfPlayerDied(GameState* state) {
-  if (state->player.health <= 0)
-    state->currentScene = GAMEOVER;
+void CheckIfPlayerDied(GameState& state) {
+  if (state.victory || state.player.health <= 0)
+    state.currentScene = GameScene::GAMEOVER;
 }
 
-void CheckIfPlayerWon(GameState* state) {
-  if (state->activeEnemies <= 0) {
-    state->victory = true;
-    state->currentScene = GAMEOVER;
+void CheckIfPlayerWon(GameState& state) {
+  if (state.activeEnemies <= 0) {
+    state.victory = true;
+    state.currentScene = GameScene::GAMEOVER;
   }
 }
 
-void UpdateGameplay(GameState* state, float dt) {
+void SceneGameplay::update(GameState& state, float dt) {
   CheckIfPlayerDied(state);
   CheckIfPlayerWon(state);
-  state->player.update(dt);
+  state.player.update(dt);
   UpdateEnemies(state, dt);
   PlayerShoot(state);
   UpdateProjectiles(state, dt);
@@ -265,7 +264,7 @@ void UpdateGameplay(GameState* state, float dt) {
   CheckPlayerEnemyCollisions(state);
 }
 
-void DrawGameplay(const GameState* state) {
+void SceneGameplay::draw(const GameState& state) const {
   BeginDrawing();
 
   // Setup the back buffer for drawing (clear color and depth buffers)
@@ -273,13 +272,13 @@ void DrawGameplay(const GameState* state) {
 
   int font_size = 20;
 
-  state->player.draw(state->resources.playerTexture);
+  state.player.draw(state.resources.playerTexture);
   DrawEnemies(state);
   DrawProjectiles(state);
 
-  DrawText(TextFormat("Health: %i", state->player.health), 20,
+  DrawText(TextFormat("Health: %i", state.player.health), 20,
            GetScreenHeight() - 40, font_size, WHITE);
 
-  DrawText(TextFormat("Score: %i", state->score), 20, 20, font_size, WHITE);
+  DrawText(TextFormat("Score: %i", state.score), 20, 20, font_size, WHITE);
   EndDrawing();
 }

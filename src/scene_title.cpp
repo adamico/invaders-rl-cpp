@@ -1,7 +1,5 @@
-#include "raylib.h"
-
-#include "game.h"
 #include "scene_title.h"
+#include "raylib.h"
 
 const char* TITLE_TEXT = "Invaders RL";
 const char* SUBTITLE_TEXT = "Press Space to Start";
@@ -12,12 +10,12 @@ void CenterText(const char* text, int yPos, int fontSize, Color textColor) {
            textColor);
 }
 
-void UpdateTitle(GameState* state) {
+void SceneTitle::update(GameState& state, float) {
   if (IsKeyPressed(KEY_SPACE))
-    state->currentScene = GAMEPLAY;
+    state.currentScene = GameScene::GAMEPLAY;
 }
 
-void DrawTitle(const GameState* state) {
+void SceneTitle::draw(const GameState& state) const {
   BeginDrawing();
   ClearBackground(BLACK);
   CenterText(TITLE_TEXT, windowSize.y / 2, 40, WHITE);

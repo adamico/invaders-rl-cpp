@@ -2,8 +2,11 @@
 #define SCENE_TITLE_H
 
 #include "game.h"
+#include "scene.h"
 
-void UpdateTitle(GameState* state);
-void DrawTitle(const GameState* state);
+struct SceneTitle : Scene {
+  void update(GameState& state, float deltaTime) override;
+  void draw(const GameState& state) const override;
+};
 
 #endif

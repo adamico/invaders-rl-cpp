@@ -2,8 +2,11 @@
 #define SCENE_GAMEOVER_H
 
 #include "game.h"
+#include "scene.h"
 
-void UpdateGameover(GameState* state);
-void DrawGameover(const GameState* state);
+struct SceneGameover : Scene {
+  void update(GameState& state, float deltaTime) override;
+  void draw(const GameState& state) const override;
+};
 
 #endif

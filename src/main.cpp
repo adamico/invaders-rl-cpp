@@ -1,8 +1,9 @@
+#include "game.h"
 #include "raylib.h"
 #include "resource_dir.h"
-#include "scene_gameover.h"
-#include "scene_gameplay.h"
-#include "scene_title.h"
+#include "scene.h"
+#include <memory>
+
 #include <stdio.h>
 
 constexpr Vector2 windowSize = {1280, 720};
@@ -39,26 +40,19 @@ int main() {
   InitAudioDevice();
 
   GameState state = {};
-
   InitGameplay(&state);
+  state.currentScene = GameScene::TITLE;
 
-  state.currentScene = TITLE;
+  std::unique_ptr<Scene> current = makeScene(GameScene::TITLE);
+  GameScene shown = GameScene::TITLE;
 
   while (!WindowShouldClose()) {
-    switch (state.currentScene) {
-    case TITLE:
-      UpdateTitle(&state);
-      DrawTitle(&state);
-      break;
-    case GAMEPLAY:
-      UpdateGameplay(&state, GetFrameTime());
-      DrawGameplay(&state);
-      break;
-    case GAMEOVER:
-      UpdateGameover(&state);
-      DrawGameover(&state);
-      break;
+    if (state.currentScene != shown) {
+      current = makeScene(state.currentScene);
+      shown = state.currentScene;
     }
+    current->update(state, GetFrameTime());
+    current->draw(state);
   }
 
   CloseAudioDevice();

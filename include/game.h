@@ -1,5 +1,4 @@
-#ifndef GAME_H
-#define GAME_H
+#pragma once
 
 #include "raylib.h"
 #include <array>
@@ -9,7 +8,7 @@ constexpr int MAX_ENEMIES = 55;
 
 extern const Vector2 windowSize;
 
-typedef enum GameScene { TITLE, GAMEPLAY, GAMEOVER } GameScene;
+enum class GameScene { TITLE, GAMEPLAY, GAMEOVER };
 
 struct Player {
   Vector2 pos{};
@@ -74,5 +73,3 @@ typedef struct GameState {
 
 void CenterText(const char* text, int yPos, int fontSize, Color textColor);
 void InitGameplay(GameState* state);
-
-#endif
