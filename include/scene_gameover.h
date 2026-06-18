@@ -3,7 +3,7 @@
 
 #include "game.h"
 
-void UpdateGameover(GameState *state);
-void DrawGameover(GameState *state);
+void UpdateGameover(GameState* state);
+void DrawGameover(const GameState* state);
 
 #endif

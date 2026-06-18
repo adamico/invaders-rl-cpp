@@ -3,7 +3,7 @@
 
 #include "game.h"
 
-void UpdateGameplay(GameState *state, float dt);
-void DrawGameplay(GameState *state);
+void UpdateGameplay(GameState* state, float dt);
+void DrawGameplay(const GameState* state);
 
 #endif

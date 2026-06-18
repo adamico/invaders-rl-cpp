@@ -17,14 +17,8 @@ constexpr int ROW_PADDING = 60;
 constexpr float ENEMY_SPEED = 50.0f;
 constexpr float ENEMY_RADIUS = 15.0f;
 constexpr int ENEMY_SCORE_VALUE = 100;
-
-#define FOR_EACH_PROJECTILE(projectilePtr, projectileArray)                    \
-  for (Projectile* projectilePtr = projectileArray;                            \
-       projectilePtr < projectileArray + MAX_PROJECTILES; projectilePtr++)
-
-#define FOR_EACH_ENEMY(enemyPtr, enemyArray)                                   \
-  for (Enemy* enemyPtr = enemyArray; enemyPtr < enemyArray + MAX_ENEMIES;      \
-       enemyPtr++)
+constexpr float PROJECTILE_SPEED = 500.0f;
+constexpr float PROJECTILE_RADIUS = 5.0f;
 
 void InitPlayer(GameState* state) {
   Vector2 startPos = {GetScreenWidth() / 2.0f,
@@ -101,7 +95,7 @@ void DrawOffset(Texture2D texture, Vector2 pos, Color tint) {
   DrawTextureV(texture, drawPos, tint);
 }
 
-void DrawPlayer(GameState* state) {
+void DrawPlayer(const GameState* state) {
   DrawOffset(state->resources.playerTexture, state->player.pos, WHITE);
   DrawCircleLinesV(state->player.pos, state->player.radius, RED);
 };
@@ -111,35 +105,46 @@ void PlayerShoot(GameState* state) {
     return;
 
   PlaySound(state->resources.laserSound);
-  FOR_EACH_PROJECTILE(bullet, state->bullets) {
-    if (bullet->active)
+  for (Projectile& bullet : state->bullets) {
+    if (bullet.active)
       continue;
 
-    bullet->active = true;
-    bullet->pos = state->player.pos;
-    bullet->dir = (Vector2){0.0f, -1.0f};
-    bullet->speed = 500.0f;
-    bullet->radius = 5.0f;
+    bullet.spawn(state->player.pos);
     break;
   }
 }
 
+void Projectile::spawn(Vector2 from, Vector2 dir) {
+  pos = from;
+  this->dir = dir;
+  speed = PROJECTILE_SPEED;
+  radius = PROJECTILE_RADIUS;
+  active = true;
+}
+
+void Projectile::update(float dt) {
+  if (!active)
+    return;
+  pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
+  active = pos.y > 0;
+}
+
+void Projectile::draw(const Texture2D& texture) const {
+  if (!active)
+    return;
+  DrawOffset(texture, pos, WHITE);
+  DrawCircleLinesV(pos, radius, RED);
+}
+
 void UpdateProjectiles(GameState* state, float dt) {
-  FOR_EACH_PROJECTILE(bullet, state->bullets) {
-    if (!bullet->active)
-      continue;
-    bullet->pos =
-        Vector2Add(bullet->pos, Vector2Scale(bullet->dir, bullet->speed * dt));
-    bullet->active = bullet->pos.y > 0;
+  for (Projectile& bullet : state->bullets) {
+    bullet.update(dt);
   }
 }
 
-void DrawProjectiles(GameState* state) {
-  FOR_EACH_PROJECTILE(bullet, state->bullets) {
-    if (bullet->active) {
-      DrawOffset(state->resources.laserTexture, bullet->pos, WHITE);
-      DrawCircleLinesV(bullet->pos, bullet->radius, RED);
-    }
+void DrawProjectiles(const GameState* state) {
+  for (const Projectile& bullet : state->bullets) {
+    bullet.draw(state->resources.laserTexture);
   }
 }
 
@@ -149,14 +154,14 @@ void UpdateEnemies(GameState* state, float dt) {
   bool needToMoveDown = false;
   int rightEdge = windowSize.x - ENEMY_RADIUS;
   int leftEdge = ENEMY_RADIUS;
-  FOR_EACH_ENEMY(enemy, state->enemies) {
-    if (!enemy->active)
+  for (Enemy& enemy : state->enemies) {
+    if (!enemy.active)
       continue;
 
     bool willHitRightEdge =
-        (enemy->pos.x + enemy->radius) >= rightEdge && direction.x > 0;
+        (enemy.pos.x + enemy.radius) >= rightEdge && direction.x > 0;
     bool willHitLeftEdge =
-        (enemy->pos.x - enemy->radius) <= leftEdge && direction.x < 0;
+        (enemy.pos.x - enemy.radius) <= leftEdge && direction.x < 0;
     if (willHitRightEdge || willHitLeftEdge) {
       state->enemyDirection.x *= -1.0f;
       needToMoveDown = true;
@@ -165,9 +170,9 @@ void UpdateEnemies(GameState* state, float dt) {
   }
 
   if (needToMoveDown) {
-    FOR_EACH_ENEMY(enemy, state->enemies) {
-      enemy->pos.y += ROW_PADDING / 2.0;
-      if (enemy->pos.y > windowSize.y) {
+    for (Enemy& enemy : state->enemies) {
+      enemy.pos.y += ROW_PADDING / 2.0;
+      if (enemy.pos.y > windowSize.y) {
         state->currentScene = GAMEOVER;
         break;
       }
@@ -175,53 +180,53 @@ void UpdateEnemies(GameState* state, float dt) {
     needToMoveDown = false;
   }
 
-  FOR_EACH_ENEMY(enemy, state->enemies) {
-    if (!enemy->active)
+  for (Enemy& enemy : state->enemies) {
+    if (!enemy.active)
       continue;
 
-    Vector2* enemyPos = &enemy->pos;
+    Vector2* enemyPos = &enemy.pos;
     *enemyPos = Vector2Add(*enemyPos, Vector2Scale(direction, speed * dt));
   }
 }
 
-void DrawEnemies(GameState* state) {
-  FOR_EACH_ENEMY(enemy, state->enemies) {
-    if (enemy->active) {
-      DrawOffset(state->resources.enemyTexture, enemy->pos, WHITE);
-      DrawCircleLinesV(enemy->pos, enemy->radius, RED);
+void DrawEnemies(const GameState* state) {
+  for (const Enemy& enemy : state->enemies) {
+    if (enemy.active) {
+      DrawOffset(state->resources.enemyTexture, enemy.pos, WHITE);
+      DrawCircleLinesV(enemy.pos, enemy.radius, RED);
     }
   }
 }
 
 void CheckBulletEnemyCollisions(GameState* state) {
-  FOR_EACH_PROJECTILE(bullet, state->bullets) {
-    if (!bullet->active)
+  for (Projectile& bullet : state->bullets) {
+    if (!bullet.active)
       continue;
 
-    FOR_EACH_ENEMY(enemy, state->enemies) {
-      if (!enemy->active)
+    for (Enemy& enemy : state->enemies) {
+      if (!enemy.active)
         continue;
 
-      if (CheckCollisionCircles(bullet->pos, bullet->radius, enemy->pos,
-                                enemy->radius)) {
+      if (CheckCollisionCircles(bullet.pos, bullet.radius, enemy.pos,
+                                enemy.radius)) {
         PlaySound(state->resources.explosionSound);
-        bullet->active = false;
-        enemy->active = false;
+        bullet.active = false;
+        enemy.active = false;
         state->activeEnemies--;
-        state->score += enemy->scoreValue;
+        state->score += enemy.scoreValue;
       }
     }
   }
 }
 
 void CheckPlayerEnemyCollisions(GameState* state) {
-  FOR_EACH_ENEMY(enemy, state->enemies) {
-    if (!enemy->active)
+  for (Enemy& enemy : state->enemies) {
+    if (!enemy.active)
       continue;
 
     if (CheckCollisionCircles(state->player.pos, state->player.radius,
-                              enemy->pos, enemy->radius)) {
-      enemy->active = false;
+                              enemy.pos, enemy.radius)) {
+      enemy.active = false;
       state->currentScene = GAMEOVER;
     }
   }
@@ -250,7 +255,7 @@ void UpdateGameplay(GameState* state, float dt) {
   CheckPlayerEnemyCollisions(state);
 }
 
-void DrawGameplay(GameState* state) {
+void DrawGameplay(const GameState* state) {
   BeginDrawing();
 
   // Setup the back buffer for drawing (clear color and depth buffers)

@@ -3,7 +3,7 @@
 
 #include "game.h"
 
-void UpdateTitle(GameState *state);
-void DrawTitle(GameState *state);
+void UpdateTitle(GameState* state);
+void DrawTitle(const GameState* state);
 
 #endif

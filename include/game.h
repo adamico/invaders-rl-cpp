@@ -2,6 +2,7 @@
 #define GAME_H
 
 #include "raylib.h"
+#include <array>
 
 constexpr int MAX_PROJECTILES = 100;
 constexpr int MAX_ENEMIES = 55;
@@ -18,13 +19,17 @@ typedef struct Player {
   int health;
 } Player;
 
-typedef struct Projectile {
-  Vector2 pos;
-  Vector2 dir;
-  float speed;
-  float radius;
-  bool active;
-} Projectile;
+struct Projectile {
+  Vector2 pos{};
+  Vector2 dir{};
+  float speed{};
+  float radius{};
+  bool active{};
+
+  void spawn(Vector2 from, Vector2 dir = {0.0f, -1.0f});
+  void update(float deltaTime);
+  void draw(const Texture2D& texture) const;
+};
 
 typedef struct Enemy {
   Vector2 pos;
@@ -49,8 +54,8 @@ struct GameResources {
 
 typedef struct GameState {
   Player player;
-  Projectile bullets[MAX_PROJECTILES];
-  Enemy enemies[MAX_ENEMIES];
+  std::array<Projectile, MAX_PROJECTILES> bullets;
+  std::array<Enemy, MAX_ENEMIES> enemies;
   Vector2 enemyDirection;
   int enemySpeed;
   int activeEnemies;

@@ -1,15 +1,15 @@
 #include "scene_gameover.h"
 
-void UpdateGameover(GameState *state) {
+void UpdateGameover(GameState* state) {
   if (IsKeyPressed(KEY_ENTER)) {
     state->currentScene = TITLE;
     InitGameplay(state);
   }
 }
-void DrawGameover(GameState *state) {
+void DrawGameover(const GameState* state) {
   BeginDrawing();
   ClearBackground(BLACK);
-  const char *gameOverText = "Game Over";
+  const char* gameOverText = "Game Over";
   Color textColor = RED;
 
   if (state->victory) {

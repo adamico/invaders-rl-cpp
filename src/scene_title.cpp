@@ -17,7 +17,7 @@ void UpdateTitle(GameState* state) {
     state->currentScene = GAMEPLAY;
 }
 
-void DrawTitle(GameState* state) {
+void DrawTitle(const GameState* state) {
   BeginDrawing();
   ClearBackground(BLACK);
   CenterText(TITLE_TEXT, windowSize.y / 2, 40, WHITE);
