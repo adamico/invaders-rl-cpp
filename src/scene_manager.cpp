@@ -1,14 +1,12 @@
 #include "scene_manager.h"
 
-SceneManager::SceneManager(GameScene startScene)
-    : current_(makeScene(startScene)), shown_(startScene) {}
+SceneManager::SceneManager(std::unique_ptr<Scene> startingScene)
+    : current_(std::move(startingScene)) {};
 
 void SceneManager::tick(GameState& state, float deltaTime) {
-  if (state.currentScene != shown_) {
-    current_ = makeScene(state.currentScene);
-    shown_ = state.currentScene;
+  if (auto next = current_->update(state, deltaTime)) {
+    current_ = std::move(next);
   }
 
-  current_->update(state, deltaTime);
   current_->draw(state);
 }

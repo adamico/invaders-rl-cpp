@@ -1,11 +1,15 @@
 #include "scene_gameover.h"
+#include "scene_title.h"
 
-void SceneGameover::update(GameState& state, float deltaTime) {
+std::unique_ptr<Scene> SceneGameover::update(GameState& state,
+                                             float deltaTime) {
   if (IsKeyPressed(KEY_ENTER)) {
-    state.currentScene = GameScene::TITLE;
     InitGameplay(&state);
+    return std::make_unique<SceneTitle>();
   }
+  return nullptr;
 }
+
 void SceneGameover::draw(const GameState& state) const {
   BeginDrawing();
   ClearBackground(BLACK);

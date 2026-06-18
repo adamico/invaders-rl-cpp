@@ -1,12 +1,7 @@
-#ifndef SCENE_GAMEOVER_H
-#define SCENE_GAMEOVER_H
-
-#include "game.h"
+#pragma once
 #include "scene.h"
 
 struct SceneGameover : Scene {
-  void update(GameState& state, float deltaTime) override;
+  std::unique_ptr<Scene> update(GameState& state, float deltaTime) override;
   void draw(const GameState& state) const override;
 };
-
-#endif

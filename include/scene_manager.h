@@ -5,10 +5,9 @@
 
 class SceneManager {
 public:
-  explicit SceneManager(GameScene startScene);
+  explicit SceneManager(std::unique_ptr<Scene> startScene);
   void tick(GameState& state, float deltaTime);
 
 private:
   std::unique_ptr<Scene> current_;
-  GameScene shown_;
 };

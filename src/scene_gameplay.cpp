@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "scene_gameover.h"
 #include "scene_gameplay.h"
 
 constexpr int CANVAS_SIZE = 50;
@@ -186,7 +187,7 @@ void UpdateEnemies(GameState& state, float dt) {
     for (Enemy& enemy : state.enemies) {
       enemy.moveVertically(ENEMY_VERTICAL_MOVEMENT);
       if (enemy.pos.y > GetScreenHeight()) {
-        state.currentScene = GameScene::GAMEOVER;
+        state.player.health = 0;
         break;
       }
     }
@@ -236,32 +237,25 @@ void CheckPlayerEnemyCollisions(GameState& state) {
     if (CheckCollisionCircles(state.player.pos, state.player.radius, enemy.pos,
                               enemy.radius)) {
       enemy.active = false;
-      state.currentScene = GameScene::GAMEOVER;
+      state.player.health = 0;
     }
   }
 }
 
-void CheckIfPlayerDied(GameState& state) {
-  if (state.victory || state.player.health <= 0)
-    state.currentScene = GameScene::GAMEOVER;
-}
-
-void CheckIfPlayerWon(GameState& state) {
-  if (state.activeEnemies <= 0) {
-    state.victory = true;
-    state.currentScene = GameScene::GAMEOVER;
-  }
-}
-
-void SceneGameplay::update(GameState& state, float dt) {
-  CheckIfPlayerDied(state);
-  CheckIfPlayerWon(state);
-  state.player.update(dt);
+std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
   UpdateEnemies(state, dt);
+  state.player.update(dt);
   PlayerShoot(state);
   UpdateProjectiles(state, dt);
   CheckBulletEnemyCollisions(state);
   CheckPlayerEnemyCollisions(state);
+
+  if (state.activeEnemies <= 0)
+    state.victory = true;
+  if (state.victory || state.player.health <= 0)
+    return std::make_unique<SceneGameover>();
+
+  return nullptr;
 }
 
 void SceneGameplay::draw(const GameState& state) const {

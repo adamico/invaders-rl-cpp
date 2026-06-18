@@ -8,8 +8,6 @@ constexpr int MAX_ENEMIES = 55;
 
 extern const Vector2 windowSize;
 
-enum class GameScene { TITLE, GAMEPLAY, GAMEOVER };
-
 struct Player {
   Vector2 pos{};
   Vector2 dir{};
@@ -65,7 +63,6 @@ typedef struct GameState {
   Vector2 enemyDirection;
   int enemySpeed;
   int activeEnemies;
-  GameScene currentScene;
   bool victory;
   GameResources resources;
   int score;

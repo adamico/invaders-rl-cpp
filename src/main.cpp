@@ -2,6 +2,7 @@
 #include "raylib.h"
 #include "resource_dir.h"
 #include "scene_manager.h"
+#include "scene_title.h"
 
 #include <stdio.h>
 
@@ -40,9 +41,8 @@ int main() {
 
   GameState state = {};
   InitGameplay(&state);
-  state.currentScene = GameScene::TITLE;
 
-  SceneManager scenes(GameScene::TITLE);
+  SceneManager scenes(std::make_unique<SceneTitle>());
 
   while (!WindowShouldClose()) {
     scenes.tick(state, GetFrameTime());
