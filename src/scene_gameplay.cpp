@@ -1,8 +1,10 @@
+#include "collision.h"
 #include "raylib.h"
 #include "raymath.h"
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "collision.h"
 #include "hud.h"
 #include "projectile_pool.h"
 #include "scene_gameover.h"
@@ -88,15 +90,14 @@ void Enemy::draw(const Texture2D& texture) const {
   DrawCircleLinesV(pos, radius, RED);
 }
 
-void CheckBulletEnemyCollisions(GameState& state) {
+void DetectBulletEnemyCollisions(GameState& state) {
   for (Projectile& bullet : state.projectilePool.projectiles) {
     if (!bullet.active) continue;
 
     for (Enemy& enemy : state.swarm.enemies) {
       if (!enemy.active) continue;
 
-      if (CheckCollisionCircles(bullet.pos, bullet.radius, enemy.pos,
-                                enemy.radius)) {
+      if (overlaps(bullet, enemy)) {
         PlaySound(state.resources.explosionSound);
         bullet.deactivate();
         state.swarm.deactivate(enemy);
@@ -106,12 +107,11 @@ void CheckBulletEnemyCollisions(GameState& state) {
   }
 }
 
-void CheckPlayerEnemyCollisions(GameState& state) {
+void DetectPlayerEnemyCollisions(GameState& state) {
   for (Enemy& enemy : state.swarm.enemies) {
     if (!enemy.active) continue;
 
-    if (CheckCollisionCircles(state.player.pos, state.player.radius, enemy.pos,
-                              enemy.radius)) {
+    if (overlaps(state.player, enemy)) {
       state.swarm.deactivate(enemy);
       state.player.health = 0;
     }
@@ -123,8 +123,8 @@ std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
   state.player.update(dt);
   PlayerShoot(state);
   state.projectilePool.update(dt);
-  CheckBulletEnemyCollisions(state);
-  CheckPlayerEnemyCollisions(state);
+  DetectBulletEnemyCollisions(state);
+  DetectPlayerEnemyCollisions(state);
 
   if (state.swarm.activeCount <= 0) state.victory = true;
   if (state.victory || state.player.health <= 0)
