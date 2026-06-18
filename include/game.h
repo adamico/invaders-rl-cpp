@@ -11,13 +11,16 @@ extern const Vector2 windowSize;
 
 typedef enum GameScene { TITLE, GAMEPLAY, GAMEOVER } GameScene;
 
-typedef struct Player {
-  Vector2 pos;
-  float radius;
-  float speed;
-  Vector2 dir;
-  int health;
-} Player;
+struct Player {
+  Vector2 pos{};
+  Vector2 dir{};
+  float speed{};
+  float radius{};
+  int health{};
+
+  void update(float deltaTime);
+  void draw(const Texture2D& texture) const;
+};
 
 struct Projectile {
   Vector2 pos{};

@@ -24,9 +24,9 @@ void InitPlayer(GameState* state) {
   Vector2 startPos = {GetScreenWidth() / 2.0f,
                       GetScreenHeight() - (PLAYER_RADIUS * 4)};
   state->player = (Player){.pos = startPos,
-                           .radius = PLAYER_RADIUS,
-                           .speed = PLAYER_SPEED,
                            .dir = {0.0f, 0.0f},
+                           .speed = PLAYER_SPEED,
+                           .radius = PLAYER_RADIUS,
                            .health = PLAYER_HEALTH};
 }
 
@@ -67,27 +67,23 @@ void InitGameplay(GameState* state) {
   InitBullets(state);
 }
 
-void UpdatePlayer(GameState* state, float dt) {
-  float radius = state->player.radius;
-  float speed = state->player.speed;
-  state->player.dir = Vector2Zero();
-  Vector2* playerPos = &state->player.pos;
-  Vector2* playerDir = &state->player.dir;
+void Player::update(float dt) {
+  dir = Vector2Zero();
 
   if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))
-    playerDir->x -= 1.0f;
+    dir.x -= 1.0f;
   if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
-    playerDir->x += 1.0f;
+    dir.x += 1.0f;
   if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
-    playerDir->y -= 1.0f;
+    dir.y -= 1.0f;
   if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S))
-    playerDir->y += 1.0f;
+    dir.y += 1.0f;
 
-  *playerDir = Vector2Normalize(*playerDir);
-  *playerPos = Vector2Add(*playerPos, Vector2Scale(*playerDir, speed * dt));
-  *playerPos =
-      Vector2Clamp(*playerPos, (Vector2){radius, radius},
-                   (Vector2){windowSize.x - radius, windowSize.y - radius});
+  dir = Vector2Normalize(dir);
+  pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
+  pos = Vector2Clamp(
+      pos, (Vector2){radius, radius},
+      (Vector2){GetScreenWidth() - radius, GetScreenHeight() - radius});
 };
 
 void DrawOffset(Texture2D texture, Vector2 pos, Color tint) {
@@ -95,9 +91,9 @@ void DrawOffset(Texture2D texture, Vector2 pos, Color tint) {
   DrawTextureV(texture, drawPos, tint);
 }
 
-void DrawPlayer(const GameState* state) {
-  DrawOffset(state->resources.playerTexture, state->player.pos, WHITE);
-  DrawCircleLinesV(state->player.pos, state->player.radius, RED);
+void Player::draw(const Texture2D& texture) const {
+  DrawOffset(texture, pos, WHITE);
+  DrawCircleLinesV(pos, radius, RED);
 };
 
 void PlayerShoot(GameState* state) {
@@ -247,7 +243,7 @@ void CheckIfPlayerWon(GameState* state) {
 void UpdateGameplay(GameState* state, float dt) {
   CheckIfPlayerDied(state);
   CheckIfPlayerWon(state);
-  UpdatePlayer(state, dt);
+  state->player.update(dt);
   UpdateEnemies(state, dt);
   PlayerShoot(state);
   UpdateProjectiles(state, dt);
@@ -263,7 +259,7 @@ void DrawGameplay(const GameState* state) {
 
   int font_size = 20;
 
-  DrawPlayer(state);
+  state->player.draw(state->resources.playerTexture);
   DrawEnemies(state);
   DrawProjectiles(state);
 
