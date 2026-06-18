@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 7 · SceneManager</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 07 · Refactor · Beyond the roadmap</span>
+<h1>A class to own the scenes</h1>
+<p class="subtitle">Your <code>main</code> loop still does bookkeeping it shouldn't: it holds the <code>unique_ptr</code>, mirrors the current scene in a <code>shown</code> variable, and polls for transitions. That's a <em>responsibility</em>, and it has a name. Give it a class.</p>
+
+<h2>What's wrong with main right now</h2>
+<p>Look at what <code>main</code> currently carries (from lesson 6):</p>
+<pre>std::unique_ptr&lt;Scene&gt; current = makeScene(GameScene::TITLE);
+GameScene shown = GameScene::TITLE;            <span class="cm">// a mirror of "which scene is live"</span>
+
+while (!WindowShouldClose()) {
+  if (state.currentScene != shown) {           <span class="cm">// transition bookkeeping</span>
+    current = makeScene(state.currentScene);
+    shown = state.currentScene;                <span class="cm">// keep the mirror in sync — easy to forget</span>
+  }
+  current-&gt;update(state, GetFrameTime());
+  current-&gt;draw(state);
+}</pre>
+<p><code>current</code> and <code>shown</code> are an <strong>invariant pair</strong>: <code>shown</code>
+must always name the type <code>current</code> points at. Right now nothing enforces that — if a future
+edit updates one and forgets the other, the game silently shows the wrong scene. Whenever two variables
+must move together, that's a class waiting to be born. <code>main</code>'s job is to <em>run the game</em>,
+not to babysit scene transitions. This is the <strong>single-responsibility principle</strong>, and the
+same <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-org">C.4 judgment</a>
+you used in lesson 5: a function (or here, a loop) belongs with the data whose invariant it protects.</p>
+
+<h2>The tool: a coordinator class</h2>
+<p>Lesson 5 gave you <em>entity</em> classes (<code>Player</code>, <code>Enemy</code>) — small things
+that own their own data. <code>SceneManager</code> is a different animal: a <strong>coordinator</strong>.
+It owns no game data; it owns the <em>relationship</em> between "which scene should run" and "which scene
+object exists," and exposes one narrow verb to the outside world.</p>
+
+<pre><span class="cm">// scene_manager.h</span>
+#pragma once
+#include "scene.h"
+#include &lt;memory&gt;
+
+class SceneManager {
+public:
+  <span class="add">explicit SceneManager(GameScene start);            // build the first scene</span>
+  <span class="add">void tick(GameState&amp; state, float dt);             // one frame: transition? update + draw</span>
+
+private:
+  <span class="add">std::unique_ptr&lt;Scene&gt; current_;</span>
+  <span class="add">GameScene shown_;                                  // the mirror — now an invariant of the class</span>
+};</pre>
+
+<div class="why">
+<h3>Why the constructor matters here</h3>
+<p>The constructor's job is to <strong>establish the invariant before anyone can observe the object</strong>:
+build <code>current_</code> and set <code>shown_</code> to match, in one place, atomically. After the
+constructor runs, it is <em>impossible</em> to hold a <code>SceneManager</code> whose mirror is out of
+sync — because the only code that touches <code>shown_</code> lives inside the class. That's the whole
+point of <code>private</code>: it's not secrecy, it's a guarantee. Same idea as <code>GameResources</code>
+in lesson 1 — the constructor owns the setup so callers can't get it wrong. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-ctor">Core Guidelines C.40 / C.41: a constructor should create a fully-initialised object</a>]</span></p>
+</div>
+
+<p><code>explicit</code> on a single-argument constructor blocks a surprising implicit conversion (a bare
+<code>GameScene</code> silently becoming a <code>SceneManager</code>). Habit worth keeping:
+<strong>single-argument constructors are <code>explicit</code> by default.</strong> <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-explicit">C.46</a>]</span></p>
+
+<h2>The implementation — move the bookkeeping in, unchanged</h2>
+<pre><span class="cm">// scene_manager.cpp</span>
+#include "scene_manager.h"
+
+SceneManager::SceneManager(GameScene start)
+  : current_(makeScene(start)), shown_(start) {}   <span class="cm">// member init list — invariant set at birth</span>
+
+void SceneManager::tick(GameState&amp; state, float dt) {
+  if (state.currentScene != shown_) {              <span class="cm">// a scene requested a transition</span>
+    current_ = makeScene(state.currentScene);      <span class="cm">// move-assign: old scene deleted, new moved in</span>
+    shown_ = state.currentScene;
+  }
+  current_-&gt;update(state, dt);                      <span class="cm">// still virtual dispatch — unchanged</span>
+  current_-&gt;draw(state);
+}</pre>
+
+<p>Notice the logic is <em>identical</em> to what was in <code>main</code> — you've relocated it, not
+rewritten it. The move semantics from lesson 6 still happen inside <code>tick</code>; they're now an
+implementation detail nobody outside the class needs to think about. That's the win: encapsulation lets
+the same code stop being everyone's problem.</p>
+
+<h2>main shrinks to what it's actually for</h2>
+<pre><span class="cm">// main.cpp</span>
+GameState state = {};
+InitGameplay(&amp;state);
+state.currentScene = GameScene::TITLE;
+
+<span class="add">SceneManager scenes(GameScene::TITLE);</span>
+
+while (!WindowShouldClose()) {
+  <span class="add">scenes.tick(state, GetFrameTime());</span>   <span class="cm">// that's the whole loop body</span>
+}</pre>
+<p>The <code>unique_ptr</code>, the <code>shown</code> mirror, the transition <code>if</code> — all gone
+from <code>main</code>. The loop now reads as one sentence: <em>until the window closes, tick the scenes.</em>
+You can delete <code>#include &lt;memory&gt;</code> from <code>main.cpp</code> (it no longer touches a
+smart pointer directly) and add <code>#include "scene_manager.h"</code>.</p>
+
+<div class="why">
+<h3>The last switch is still alive — on purpose</h3>
+<p><code>makeScene</code>'s factory <code>switch</code> hasn't moved; <code>SceneManager</code> calls it.
+That's fine — this lesson is about <em>ownership</em>, not about killing the switch. Removing it needs a
+different idea: letting <code>update</code> <strong>return the next scene</strong> instead of writing
+<code>state.currentScene</code>. That's lesson 8. One change at a time, game playable after each.</p>
+</div>
+
+<h2>Your task <span class="tag">feedback loop</span></h2>
+<ol class="steps">
+<li>Create <code>include/scene_manager.h</code> with the <code>SceneManager</code> class (ctor + <code>tick</code>, two private members).</li>
+<li>Create <code>src/scene_manager.cpp</code>: ctor uses a <strong>member initialiser list</strong>; <code>tick</code> holds the transition <code>if</code> + the two virtual calls.</li>
+<li>Add <code>scene_manager.cpp</code> to your build (Makefile / CMake — wherever the other <code>src/*.cpp</code> are listed).</li>
+<li>In <code>main.cpp</code>: replace the <code>unique_ptr</code> + <code>shown</code> + loop body with a <code>SceneManager scenes(...)</code> and a one-line <code>scenes.tick(...)</code>.</li>
+<li>Delete the now-dead lines from <code>main</code> and fix its includes.</li>
+<li>Build &amp; play the full cycle: Title → Gameplay → Gameover → Title. Behaviour must be identical to before.</li>
+</ol>
+
+<blockquote><strong>Traps to expect:</strong> (1) forgetting to add <code>scene_manager.cpp</code> to the
+build → linker error <code>undefined reference to SceneManager::tick</code> (a <em>link</em> error, not a
+compile error — different beast, worth recognising). (2) Initialising <code>current_</code> in the
+constructor <em>body</em> with <code>=</code> instead of the init list still works here, but prefer the
+init list — it's the idiom and it matters once members lack default constructors. (3) Leaving
+<code>state.currentScene = TITLE</code> in <code>main</code> — keep it; it seeds the manager's first
+transition check correctly.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why move <code>current</code> and <code>shown</code> into a class together?</div>
+  <button data-fb="No — a class here adds no speed; it's about correctness.">To make scene transitions run faster</button>
+  <button data-fb="No — they were already two variables; a class doesn't reduce the count.">To use less memory than two variables</button>
+  <button data-fb="Right — they must always agree, and private members let the class enforce that.">They form an invariant only the class can keep in sync</button>
+  <button data-fb="No — virtual dispatch already removed the per-frame switch in lesson 6.">To finally remove the per-frame dispatch switch</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">What is the constructor's main job in <code>SceneManager</code>?</div>
+  <button data-fb="Exactly — it sets current_ and shown_ together so no out-of-sync object exists.">Establish the invariant before the object is observable</button>
+  <button data-fb="No — drawing happens in tick, every frame, not in the constructor.">Draw the first frame of the title scene</button>
+  <button data-fb="No — unique_ptr's own destructor frees the scene; the ctor allocates it.">Free the previous scene's memory safely</button>
+  <button data-fb="No — the factory switch lives in makeScene, not the constructor.">Decide which scene types the game has</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <div class="q">You get <code>undefined reference to SceneManager::tick</code>. What's wrong?</div>
+  <button data-fb="No — a missing header gives a compile error (unknown type), not a link error.">You forgot to include scene_manager.h somewhere</button>
+  <button data-fb="Right — the symbol compiled but wasn't linked: add scene_manager.cpp to the build.">scene_manager.cpp isn't in the build's source list</button>
+  <button data-fb="No — the destructor being virtual is unrelated to this link error.">The virtual destructor is missing from Scene</button>
+  <button data-fb="No — explicit affects conversions, not whether a symbol links.">The constructor needs to drop the explicit keyword</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#S-class">Core Guidelines — C: Classes</a>,
+especially <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-org">C.4 (make a function a member if it needs the representation)</a>,
+<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-ctor">C.40–C.41 (constructors establish invariants)</a>, and
+<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-explicit">C.46 (explicit single-arg ctors)</a>. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions for this one: Should <code>SceneManager</code> own the
+<code>GameState</code> too, or stay decoupled from it? Could <code>tick</code> be split into
+<code>update()</code> and <code>render()</code> for a fixed-timestep loop later? And the big one for
+lesson 8: if <code>update</code> <em>returned</em> the next <code>unique_ptr&lt;Scene&gt;</code> directly,
+could we delete the <code>makeScene</code> switch <em>and</em> the <code>GameScene</code> enum entirely?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0006-scene-polymorphism.html">Lesson 06: scene polymorphism</a></span>
+  <span>Next → Lesson 08: <code>update</code> returns the next scene (kill the last switch)</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 07 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -23,10 +23,12 @@
 6. [DONE L0006] Scene base class + polymorphism — virtual update/draw, virtual dtor, unique_ptr +
    move, makeScene factory. Bonus: GameScene -> enum class (scoped, strong-typed).
 
-## ROADMAP COMPLETE — C->C++ idiomatic port finished.
+## Core C->C++ port DONE (L1-L6). Now in extension arc.
+7. [LESSON DELIVERED L0007, awaiting apply] SceneManager class owns unique_ptr + transition
+   bookkeeping; main shrinks to `scenes.tick(state, dt)`. Teaches invariant-pair-as-class,
+   ctor establishes invariant (C.40/41), explicit single-arg ctor (C.46), link vs compile error.
 Possible future arcs (confirm with user before starting a new mission):
-- SceneManager class owning the unique_ptr + transition logic (lift it out of main).
-- update() returns next scene -> removes the last (factory) switch.
+- [L8 teased] update() returns next scene -> removes the last (factory) switch + GameScene enum.
 - Per-scene state as class members (pause menu, settings, level-complete).
 - Revisit the repo's original RL-environment goal (currently out of scope in MISSION.md).
 
