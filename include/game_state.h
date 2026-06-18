@@ -5,10 +5,12 @@
 struct GameState {
   Player player;
   ProjectilePool projectilePool;
+  ProjectilePool enemyProjectilePool;
   Swarm swarm;
   bool victory;
   GameResources resources;
   int score;
+  float enemyFireCooldown;
 };
 
 void centerText(const char* text, int yPos, int fontSize, Color textColor);

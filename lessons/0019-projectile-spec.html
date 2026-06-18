@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 19 · Introduce a ProjectileSpec</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 19 · Design · Parameter object</span>
+<h1>Stop threading arguments: give each pool a profile</h1>
+<p class="subtitle">You felt it yourself: enemy bullets differ from player bullets by speed, then direction, then a flipped sprite — and each difference becomes another argument bolted onto <code>fire()</code> and <code>spawn()</code>, at every call site, forever. That's a known smell with a known fix. The traits aren't <em>per-shot</em>; they're <em>per-weapon</em>. So the pool should own them.</p>
+
+<h2>Name the smell</h2>
+<p>Right now your signatures have been growing:</p>
+<pre><span class="cm">// the telescoping you already have</span>
+bool fire(Vector2 from, Vector2 dir = {0,-1}, float speed = 500.0f);
+void spawn(Vector2 from, Vector2 dir = {0,-1}, float speed = 500.0f);</pre>
+<p>Add "flip the sprite for enemy bullets" and it's a <em>fourth</em> parameter; add damage, sound, sprite
+and it's the seventh. This is the <strong>Long Parameter List / Data Clump</strong> smell, and the fix is
+<strong>Introduce Parameter Object</strong>: the cluster of values that always travel together becomes one
+named thing. <span class="cite">[<a href="https://refactoring.com/catalog/introduceParameterObject.html">Fowler — Introduce Parameter Object</a>]</span></p>
+
+<div class="why-box">
+<strong>The key insight — ownership, not just bundling.</strong> Bundling the args into a struct you still
+pass on every <code>fire()</code> call would help a little. But notice <em>who</em> those values belong to:
+speed, direction, flip are constant for the <strong>whole pool's lifetime</strong> — every player bullet is
+identical; every enemy bullet is identical. They're not properties of a shot, they're properties of the
+<em>weapon</em>. So the pool should <strong>own</strong> the profile and set it <em>once</em>. Then
+<code>fire()</code> shrinks to the one thing that really does vary per shot: <strong>where</strong>.
+</div>
+
+<h2>Step 1 — the spec struct (with default member initializers)</h2>
+<p>A plain aggregate of the traits, with sane defaults. Put it in <code>game.h</code> above
+<code>Projectile</code> (the projectile needs it for <code>spawn</code>):</p>
+<pre><span class="cm">// game.h — above struct Projectile</span>
+struct ProjectileSpec {
+  float speed = 500.0f;
+  Vector2 dir = {0.0f, -1.0f};
+  bool flipV  = false;        <span class="cm">// render the sprite upside-down (enemy bullets)</span>
+};</pre>
+<p>Those <code>= ...</code> are <strong>default member initializers</strong>: any field you don't mention at
+construction gets the default. Combined with C++20 <strong>designated initializers</strong> (which you
+unlocked in L17), configuring a pool reads like a labelled record — you set only what differs:</p>
+<pre>state-&gt;projectilePool.reset({.speed = 500.0f, .dir = {0, -1}});            <span class="cm">// flipV defaults false</span>
+state-&gt;enemyProjectilePool.reset({.speed = 350.0f, .dir = {0, 1}, .flipV = true});</pre>
+
+<h2>Step 2 — the pool owns one spec, set in <code>reset</code></h2>
+<p><code>fire</code> loses <em>all</em> its trait parameters — back down to just the position:</p>
+<pre><span class="cm">// projectile_pool.h</span>
+struct ProjectilePool {
+  void reset(ProjectileSpec spec);   <span class="cm">// configure + clear</span>
+  void update(float deltaTime);
+  void draw(const Texture2D&amp; texture) const;
+  bool fire(Vector2 from);           <span class="cm">// position only — pool knows the rest</span>
+  int activeCount() const { return pool.activeCount(); }
+  <span class="cm">// begin/end unchanged...</span>
+private:
+  Pool&lt;Projectile, MAX_PROJECTILES&gt; pool;
+  ProjectileSpec spec{};             <span class="cm">// the weapon profile</span>
+};</pre>
+<pre><span class="cm">// projectile_pool.cpp</span>
+void ProjectilePool::reset(ProjectileSpec newSpec) {
+  spec = newSpec;
+  for (auto&amp; projectile : pool)
+    projectile = {.active = false};
+}
+
+bool ProjectilePool::fire(Vector2 from) {
+  Projectile* projectile = pool.acquire();
+  if (!projectile) return false;
+  projectile-&gt;spawn(from, spec);     <span class="cm">// hand the slot the whole profile</span>
+  return true;
+}</pre>
+
+<h2>Step 3 — <code>spawn</code> takes the spec, not loose args</h2>
+<pre><span class="cm">// game.h</span>
+struct Projectile {
+  Vector2 pos{};
+  Vector2 dir{};
+  float speed{};
+  float radius{};
+  bool active{};
+  bool flipV{};                      <span class="cm">// NEW: carried for draw()</span>
+
+  void spawn(Vector2 from, const ProjectileSpec&amp; spec);   <span class="cm">// const ref: read-only, no copy</span>
+  void update(float deltaTime);
+  void draw(const Texture2D&amp; texture) const;
+  void deactivate() { active = false; }
+};</pre>
+<pre><span class="cm">// scene_gameplay.cpp</span>
+void Projectile::spawn(Vector2 from, const ProjectileSpec&amp; spec) {
+  pos    = from;
+  dir    = spec.dir;
+  speed  = spec.speed;
+  flipV  = spec.flipV;
+  radius = PROJECTILE_RADIUS;
+  active = true;
+}</pre>
+<p>Note <code>const ProjectileSpec&amp;</code> — read-only access, no copy (you only read the fields). The spec
+flows pool → spawn → projectile fields; after that the projectile is self-sufficient.</p>
+
+<h2>Step 4 — fix the directional retire bug, and flip the sprite</h2>
+<p>Your <code>update</code> currently retires a bullet with <code>active = pos.y &gt; 0</code> — correct for
+<em>upward</em> player bullets, but a <strong>downward</strong> enemy bullet keeps <code>pos.y &gt; 0</code>
+forever after it leaves the bottom of the screen: it never deactivates, silently hogging a pool slot. Retire
+on <em>either</em> edge:</p>
+<pre>void Projectile::update(float dt) {
+  if (!active) return;
+  pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
+  active = pos.y &gt; 0 &amp;&amp; pos.y &lt; GetScreenHeight();   <span class="cm">// off top OR bottom = dead</span>
+}</pre>
+<p>And the raylib bit — draw the sprite flipped when <code>flipV</code>. A texture is flipped vertically by
+giving <code>DrawTextureRec</code> a source rectangle with <strong>negative height</strong>:</p>
+<pre>void Projectile::draw(const Texture2D&amp; texture) const {
+  if (!active) return;
+  Rectangle src = {0, 0, (float)texture.width,
+                   flipV ? -(float)texture.height : (float)texture.height};
+  Vector2 drawPos = Vector2Add(pos, CANVAS_OFFSET);
+  DrawTextureRec(texture, src, drawPos, WHITE);
+  DrawCircleLinesV(pos, radius, RED);
+}</pre>
+<p>(Negative source height is raylib's idiom for a vertical flip — it samples the rows bottom-to-top.
+<span class="cite">[<a href="https://www.raylib.com/cheatsheet/cheatsheet.html">raylib DrawTextureRec</a>]</span>)</p>
+
+<h2>Step 5 — update the call sites (they get simpler)</h2>
+<pre><span class="cm">// initGameplay — configure each pool once</span>
+state-&gt;projectilePool.reset({.speed = 500.0f, .dir = {0.0f, -1.0f}});
+state-&gt;enemyProjectilePool.reset({.speed = 350.0f, .dir = {0.0f, 1.0f}, .flipV = true});
+
+<span class="cm">// playerShoot — position only</span>
+if (state.projectilePool.fire(state.player.pos)) PlaySound(state.resources.laserSound);
+
+<span class="cm">// updateEnemyFire — position only</span>
+state.enemyProjectilePool.fire(shooter-&gt;pos);</pre>
+<p>The payoff to feel: a future <em>fourth</em> trait (damage, sprite, sound) is <strong>one field</strong> in
+<code>ProjectileSpec</code> + one default — and <strong>zero</strong> call sites change. The interface
+stopped growing.</p>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/game.h</code> — add <code>struct ProjectileSpec</code> (above <code>Projectile</code>); add <code>bool flipV{};</code> to <code>Projectile</code>; change <code>spawn</code> to <code>spawn(Vector2 from, const ProjectileSpec&amp;)</code>.</li>
+<li><code>include/projectile_pool.h</code> — <code>reset(ProjectileSpec)</code>; <code>fire(Vector2 from)</code> (drop dir/speed); add private <code>ProjectileSpec spec{};</code>.</li>
+<li><code>src/projectile_pool.cpp</code> — store the spec in <code>reset</code>; <code>fire</code> calls <code>spawn(from, spec)</code>.</li>
+<li><code>src/scene_gameplay.cpp</code> — rewrite <code>Projectile::spawn</code>/<code>update</code>/<code>draw</code> per above; configure both pools in <code>initGameplay</code>; simplify the two <code>fire</code> call sites.</li>
+<li>Build &amp; play: player bullets up at 500, enemy bullets down at 350 with a flipped sprite; both retire off-screen; <code>fire()</code> takes only a position again.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) <code>ProjectileSpec</code> must be declared before <code>Projectile</code>
+in <code>game.h</code> (spawn's signature names it). (2) Designated initializers require fields in
+<em>declaration order</em> and C++20 (you have it) — <code>{.dir=…, .speed=…}</code> in the wrong order won't
+compile. (3) Don't forget to actually <em>store</em> the spec in <code>reset</code> before clearing — a pool
+that never set its spec fires with default-constructed traits. (4) The flip is a <em>source-rect</em> negative
+height, not a negative draw position.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why give the <em>pool</em> the spec instead of passing it to every <code>fire()</code> call?</div>
+  <button data-fb="No — a struct isn't meaningfully faster to pass than three scalars.">Passing one struct is faster than three arguments</button>
+  <button data-fb="No — fire() could still take a struct; that's not the distinction.">Only a member can hold a Vector2</button>
+  <button data-fb="Right — the traits are constant for the whole population, so they belong to the owner and are set once, not per shot.">The traits are per-weapon, constant for the pool's life — set once, not per shot</button>
+  <button data-fb="No — designated initializers work as function arguments too.">Designated initializers only work on members</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">What does adding a 4th trait (e.g. damage) now cost?</div>
+  <button data-fb="Right — one field + one default in ProjectileSpec; existing call sites are untouched.">One field in ProjectileSpec; zero changes at call sites</button>
+  <button data-fb="No — that's exactly the telescoping we removed.">A new parameter on fire() and spawn() and every caller</button>
+  <button data-fb="No — no new pool is needed; the spec just grows by one field.">A third ProjectilePool subclass</button>
+  <button data-fb="No — Pool&lt;T,N&gt; is unaffected; the trait lives in the spec.">Changing the generic Pool template</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <div class="q">Why did <code>active = pos.y &gt; 0</code> leak slots for enemy bullets?</div>
+  <button data-fb="No — acquire() works fine; the slot was just never freed.">acquire() can't find downward bullets</button>
+  <button data-fb="Right — downward bullets keep pos.y &gt; 0 after exiting the bottom, so they never deactivate; check both edges.">Downward bullets stay pos.y &gt; 0 past the bottom edge, so they never retire</button>
+  <button data-fb="No — the pool size is irrelevant to the retire condition.">MAX_PROJECTILES was too small</button>
+  <button data-fb="No — flipV is a draw flag and doesn't affect retirement.">flipV interferes with the update step</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://refactoring.com/catalog/introduceParameterObject.html">Fowler — Introduce Parameter Object</a>
+and <a href="https://refactoring.com/catalog/preserveWholeObject.html">Preserve Whole Object</a>; C++ side:
+<a href="https://en.cppreference.com/w/cpp/language/aggregate_initialization">aggregate &amp; designated initialization</a>
+and <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-struct">Core Guidelines C.2 (struct for passive data)</a>. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: should the spec also carry the <em>texture</em> and the
+<em>fire sound</em>, so the pool fully describes its weapon and the scene stops passing the texture to
+<code>draw()</code>? Is a default-constructed <code>spec{}</code> (before <code>reset</code>) a footgun worth a
+constructor instead? And next finishing-feature: <strong>real lives + respawn</strong>, or
+<strong>bunkers</strong>?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0018-enemies-shoot-back.html">Lesson 18: enemies shoot back</a></span>
+  <span>You found this smell yourself. That's the skill.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 19 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

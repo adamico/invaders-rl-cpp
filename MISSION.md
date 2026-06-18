@@ -18,7 +18,19 @@ safer, clearer, and easier to extend (new scenes, enemy types, weapons) without 
 - Refactor-driven pacing: every lesson refactors one real piece of *this* game, learn-by-doing.
 - The game must still build and run after each lesson (no big-bang rewrites).
 
-## Out of scope (for now)
-- The reinforcement-learning training loop (despite the repo name).
-- Templates/metaprogramming beyond what the refactor genuinely needs.
+## Phase 2: finish the game
+The C->C++ idiomatic refactor is complete (17 lessons). The codebase is now a clean base
+to build ON. Next goal: make Space Invaders a *complete* game, not just a clean skeleton —
+using the idioms already learned (entities, pools, scenes, RAII) to add missing gameplay.
+Refactor-driven still: one real feature at a time, game stays buildable after each.
+
+Candidate features:
+- Enemies shoot back (the `fire(dir)` hook already exists, currently unused).
+- Defensive bunkers/shields the player hides behind.
+- Real lives (currently enemy contact = instant death despite health = 5).
+- Waves / levels: clear the swarm -> next wave, faster + lower.
+- Polish: high-score persistence, screen shake, particle explosions.
+
+## Out of scope
+- "RL" in the repo name = **raylib**, NOT reinforcement learning. No ML/agent/training loop.
 - Switching build systems or graphics libraries — stays raylib + Makefile.

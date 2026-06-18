@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 18 · Enemies shoot back</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 18 · Gameplay · Enemies shoot back</span>
+<h1>Finish the game: make the swarm fight back</h1>
+<p class="subtitle">The refactor arc is done — the code is clean. Now we <em>build on it</em>. First missing piece of a real Space Invaders: enemies that shoot. You already have everything needed — a generic <code>ProjectilePool</code>, a <code>fire(from, dir)</code> hook that's sat unused since L10, and <code>health = 5</code> that currently means nothing. Today they all pay off.</p>
+
+<h2>The plan, and why each piece is something you already own</h2>
+<table>
+<tr><th>Need</th><th>Tool you already built</th></tr>
+<tr><td>enemy bullets, flying <em>down</em></td><td>a <strong>second</strong> <code>ProjectilePool</code> instance — <code>fire(from, {0,+1})</code></td></tr>
+<tr><td>fire every so often, not every frame</td><td>a cooldown timer (accumulator + <code>dt</code>)</td></tr>
+<tr><td>pick which enemy shoots</td><td>iterate <code>Swarm</code> (its <code>begin/end</code> from L16) + reservoir pick</td></tr>
+<tr><td>bullet hurts the player</td><td><code>overlaps&lt;A,B&gt;</code> (L13/L17) + decrement <code>health</code></td></tr>
+</table>
+<p>This is the whole point of the refactor: new gameplay is now <em>composition of existing parts</em>, not new
+plumbing. The generic <code>ProjectilePool</code> earns its keep the moment you need a second one.</p>
+
+<h2>Step 1 — a second projectile pool + a fire timer (state)</h2>
+<p>Enemy bullets must NOT share the player's pool — the bullet/enemy collision loop would then treat enemy
+bullets as enemy-killers. Separate pools keep the two populations cleanly apart. Add to
+<code>GameState</code>:</p>
+<pre><span class="cm">// game_state.h</span>
+struct GameState {
+  Player player;
+  ProjectilePool projectilePool;       <span class="cm">// player bullets (up)</span>
+  ProjectilePool enemyProjectilePool;  <span class="cm">// NEW: enemy bullets (down)</span>
+  Swarm swarm;
+  bool victory;
+  GameResources resources;
+  int score;
+  float enemyFireCooldown;             <span class="cm">// NEW: seconds until next enemy shot</span>
+};</pre>
+<p>The same class, instantiated twice — zero new code in <code>projectile_pool.h</code>. That reuse is the
+dividend of making it generic instead of bespoke.</p>
+
+<h2>Step 2 — reset the new state</h2>
+<p>In <code>initGameplay</code>, mirror what you do for the player pool and seed the timer:</p>
+<pre><span class="cm">// scene_gameplay.cpp — initGameplay()</span>
+state-&gt;projectilePool.reset();
+state-&gt;enemyProjectilePool.reset();   <span class="cm">// NEW</span>
+state-&gt;enemyFireCooldown = ENEMY_FIRE_INTERVAL;  <span class="cm">// NEW</span></pre>
+<p>Add the tuning constants near the other gameplay constants at the top of the file:</p>
+<pre>constexpr float ENEMY_FIRE_INTERVAL = 0.8f;  <span class="cm">// avg seconds between shots</span>
+constexpr float ENEMY_PROJECTILE_SPEED = 350.0f;  <span class="cm">// (optional, see note)</span></pre>
+<div class="why-box">
+<strong>Note on speed:</strong> <code>Projectile::spawn</code> hard-codes <code>speed = PROJECTILE_SPEED</code>
+(500). Enemy bullets reusing <code>spawn</code> will move at that same speed — fine for v1. If you want
+slower enemy shots later, that's a real design question (parameterise <code>spawn</code>'s speed, or give
+the pool a speed). Don't solve it now; ship the simple version first. Flagged, not fixed.
+</div>
+
+<h2>Step 3 — the firing logic (timer + reservoir pick)</h2>
+<p>A new free function, in the same C-style-free-function spirit as the collision helpers (C.4 — it
+orchestrates several objects, belongs to none). Two ideas here, both worth understanding:</p>
+
+<h3>The accumulator/cooldown pattern</h3>
+<p>You can't fire "every 0.8s" by counting frames — frame time varies. Instead subtract elapsed time each
+frame; when the bank hits zero, act and refill. This is the canonical game-timer pattern:</p>
+
+<h3>Reservoir sampling — pick one active enemy uniformly, in one pass</h3>
+<p><code>Swarm</code> hides its pool, but it's iterable (the <code>begin/end</code> you added in L16). You don't
+know how many are active without looking, and you don't want two passes. <strong>Reservoir sampling</strong>
+picks a uniformly-random item from a stream of unknown length in a single pass: keep the <em>k</em>-th item
+seen with probability <code>1/k</code>, and the last keeper is uniform over all. For one item:</p>
+
+<pre><span class="cm">// scene_gameplay.cpp</span>
+void updateEnemyFire(GameState&amp; state, float dt) {
+  state.enemyFireCooldown -= dt;
+  if (state.enemyFireCooldown &gt; 0.0f) return;        <span class="cm">// not yet</span>
+
+  <span class="cm">// reservoir-pick one active enemy in a single pass</span>
+  Enemy* shooter = nullptr;
+  int seen = 0;
+  for (Enemy&amp; enemy : state.swarm) {
+    if (!enemy.active) continue;
+    ++seen;
+    if (GetRandomValue(1, seen) == 1) shooter = &amp;enemy;  <span class="cm">// keep with prob 1/seen</span>
+  }
+
+  if (shooter) {
+    state.enemyProjectilePool.fire(shooter-&gt;pos, {0.0f, 1.0f});  <span class="cm">// downward</span>
+    PlaySound(state.resources.laserSound);
+  }
+  state.enemyFireCooldown = ENEMY_FIRE_INTERVAL;       <span class="cm">// refill the bank</span>
+}</pre>
+<p><code>GetRandomValue(min, max)</code> is raylib's inclusive integer RNG. <code>GetRandomValue(1, seen) == 1</code>
+is true with probability exactly <code>1/seen</code> — that's the reservoir trick in one line. <span class="cite">[<a href="https://en.wikipedia.org/wiki/Reservoir_sampling">Reservoir sampling</a> · <a href="https://www.raylib.com/cheatsheet/cheatsheet.html">raylib GetRandomValue</a>]</span></p>
+
+<h2>Step 4 — enemy bullets damage the player</h2>
+<p>A second collision helper, mirroring <code>detectBulletEnemyCollisions</code> but pointing the other way.
+This is where <code>health</code> finally becomes a real resource instead of a 0/1 flag:</p>
+<pre><span class="cm">// scene_gameplay.cpp</span>
+void detectEnemyBulletPlayerCollisions(GameState&amp; state) {
+  for (Projectile&amp; bullet : state.enemyProjectilePool) {
+    if (!bullet.active) continue;
+
+    if (overlaps(bullet, state.player)) {
+      bullet.deactivate();
+      state.player.health -= 1;        <span class="cm">// 5 hits, not instant death</span>
+    }
+  }
+}</pre>
+<p><code>overlaps</code> is symmetric and templated (L17 made <code>Player</code> satisfy <code>Collidable</code>
+already — it has <code>pos</code> + <code>radius</code>), so <code>overlaps(bullet, state.player)</code> just
+works with no new code.</p>
+
+<h2>Step 5 — wire it into the frame</h2>
+<p>Update and draw the new pool alongside the old one. In <code>SceneGameplay::update</code>:</p>
+<pre>std::unique_ptr&lt;Scene&gt; SceneGameplay::update(GameState&amp; state, float dt) {
+  if (state.swarm.update(dt)) state.player.health = 0;
+  state.player.update(dt);
+  playerShoot(state);
+  updateEnemyFire(state, dt);                  <span class="cm">// NEW</span>
+  state.projectilePool.update(dt);
+  state.enemyProjectilePool.update(dt);        <span class="cm">// NEW</span>
+  detectBulletEnemyCollisions(state);
+  detectPlayerEnemyCollisions(state);
+  detectEnemyBulletPlayerCollisions(state);    <span class="cm">// NEW</span>
+
+  if (state.swarm.activeCount() &lt;= 0) state.victory = true;
+  if (state.victory || state.player.health &lt;= 0)
+    return std::make_unique&lt;SceneGameover&gt;();
+
+  return nullptr;
+}</pre>
+<p>And in <code>SceneGameplay::draw</code>, render the enemy bullets (reuse the laser texture):</p>
+<pre>state.projectilePool.draw(state.resources.laserTexture);
+state.enemyProjectilePool.draw(state.resources.laserTexture);  <span class="cm">// NEW</span></pre>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/game_state.h</code> — add <code>ProjectilePool enemyProjectilePool;</code> and <code>float enemyFireCooldown;</code>.</li>
+<li><code>src/scene_gameplay.cpp</code> — add the two constants; reset the pool + seed the timer in <code>initGameplay</code>; add <code>updateEnemyFire</code> and <code>detectEnemyBulletPlayerCollisions</code>; call all three new lines in <code>update</code>; draw the new pool.</li>
+<li>Build &amp; play: enemies fire downward; bullets chip <code>health</code> one per hit (HUD shows it drop 5→0); five hits = gameover. Behaviour of player shooting unchanged.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) Don't reuse the player's pool for enemy bullets — separate instance, or
+your bullet/enemy collision loop will let enemy fire kill enemies. (2) Decrement <code>health -= 1</code> on
+the enemy-bullet hit, but remember <code>detectPlayerEnemyCollisions</code> still sets <code>health = 0</code>
+on contact (a body-block is still instant death — that's fine for now; "real lives/respawn" is a later
+lesson). (3) <code>GetRandomValue(1, seen)</code> — the lower bound is <code>1</code>, not <code>0</code>;
+<code>== 1</code> gives probability <code>1/seen</code>. (4) Seed the cooldown in <code>initGameplay</code> or
+the first frame fires immediately (cooldown starts at 0/garbage).</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why a <em>second</em> <code>ProjectilePool</code> instead of reusing the player's?</div>
+  <button data-fb="No — a second instance is cheap; that's not the reason.">Two pools use less memory than one bigger pool</button>
+  <button data-fb="No — fire() doesn't care which pool; direction is a parameter.">Only a second pool can fire downward</button>
+  <button data-fb="Right — separate populations keep the bullet/enemy collision loop from treating enemy fire as enemy-killing.">It keeps enemy bullets out of the bullet-vs-enemy collision loop</button>
+  <button data-fb="No — the class is identical; reuse is exactly the point.">Enemy bullets need a different class</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">In the reservoir pick, why <code>GetRandomValue(1, seen) == 1</code> as <code>seen</code> grows?</div>
+  <button data-fb="Right — keeping the k-th item with probability 1/k makes the final survivor uniform over all active enemies.">It keeps each newly-seen enemy with prob 1/seen, giving a uniform pick in one pass</button>
+  <button data-fb="No — it doesn't always pick the last; later items are kept less often.">It always selects the last active enemy seen</button>
+  <button data-fb="No — there's no second pass; that's the whole advantage.">It requires counting all enemies first, then a second pass</button>
+  <button data-fb="No — it favours neither end; the distribution is uniform.">It biases toward the first enemy in the array</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <div class="q">Why subtract <code>dt</code> from a cooldown instead of firing every N frames?</div>
+  <button data-fb="No — frame counting is simpler to write, not harder.">Frame counting is more code</button>
+  <button data-fb="Right — frame duration varies, so a wall-clock accumulator gives a consistent real-time cadence.">Frame time varies; a time accumulator fires at a consistent real-time rate</button>
+  <button data-fb="No — both can fire at most once per frame; that's unrelated.">It allows firing multiple bullets per frame</button>
+  <button data-fb="No — RNG quality is independent of the timer.">It makes GetRandomValue more random</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://en.wikipedia.org/wiki/Reservoir_sampling">Reservoir sampling (Algorithm R)</a>,
+the <a href="https://www.raylib.com/cheatsheet/cheatsheet.html">raylib cheatsheet</a> (<code>GetRandomValue</code>,
+<code>GetFrameTime</code>), and <a href="https://gameprogrammingpatterns.com/update-method.html">Game Programming Patterns — Update Method</a>
+(per-frame timers). See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: should enemy bullets be slower than the player's — and is
+hard-coded <code>spawn</code> speed now a smell worth fixing? Should only <em>front-row</em> enemies be
+allowed to shoot (more authentic) rather than any active one? And next: now that <code>health</code> is a
+real resource, do we want <strong>real lives + respawn</strong>, or <strong>defensive bunkers</strong>, as
+the next finishing feature?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0017-cpp20-concepts.html">Lesson 17: C++20 concepts</a></span>
+  <span>Phase 2 begins: finishing the game.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 18 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

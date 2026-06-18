@@ -77,6 +77,19 @@ bare `;` - reads as "move to .cpp" which is impossible for templates. Show real 
     deleted player.cpp) regenerated via `bear -- make` -> 8 TUs. IWYU: <concepts> was transitive via
     <array>, added explicit. User spotting tooling smells unprompted. See LR-0018.
 === C++ IDIOMATIC-REFACTOR ARC COMPLETE (17 lessons). ===
+
+=== PHASE 2: FINISH THE GAME (raylib gameplay, refactor-driven) ===
+NOTE: "RL" in repo name = RAYLIB, not reinforcement learning. User confirmed; NOT doing ML/agent/env.
+MISSION.md phase-2 section + memory updated. Candidate features: enemy fire, bunkers, lives/respawn,
+waves, swarm speed-up, juice.
+18. [DONE L0018] Enemies shoot back. 2nd ProjectilePool instance (generic-type reuse payoff) + cooldown
+    timer + reservoir-pick shooter (Swarm begin/end) + enemy-bullet->player health damage (health now a
+    real resource). Hiccup: fired into player pool by mistake -> enemies self-killed (user caught). Mid-
+    apply user surfaced telescoping-args smell on fire/spawn -> motivated L19. See LR-0019.
+19. [LESSON DELIVERED L0019, awaiting apply] Introduce Parameter Object: ProjectileSpec{speed,dir,flipV}
+    OWNED by the pool (set once in reset(spec)); fire() collapses to position-only. C++20 designated
+    inits. Folds in 2 bug fixes: directional retire (pos.y>0 leaked downward bullets -> check both edges)
+    + vertical sprite flip (negative source-rect height in DrawTextureRec).
 Possible future arcs (confirm with user before starting a new mission):
 - C++20 concepts (name element requirements); Swarm forwarding own iteration (Demeter); REVISIT RL
   GOAL (mission change per MISSION.md — confirm + new learning record) as C++ refactor arc completes.

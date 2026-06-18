@@ -1,8 +1,8 @@
 #pragma once
 
 #include <array>
-#include <cstddef>
 #include <concepts>
+#include <cstddef>
 
 template <typename T>
 concept Poolable = requires(T t) {

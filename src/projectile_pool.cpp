@@ -6,11 +6,11 @@ void ProjectilePool::reset() {
   }
 };
 
-bool ProjectilePool::fire(Vector2 from, Vector2 dir) {
+bool ProjectilePool::fire(Vector2 from, Vector2 dir, float speed) {
   Projectile* projectile = pool.acquire();
   if (!projectile) return false;
 
-  projectile->spawn(from, dir);
+  projectile->spawn(from, dir, speed);
   return true;
 };
 

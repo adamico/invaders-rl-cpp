@@ -16,7 +16,9 @@ constexpr float PLAYER_RADIUS = 12.5f;
 constexpr float PLAYER_SPEED = 300.0f;
 constexpr int PLAYER_HEALTH = 5;
 
-constexpr float PROJECTILE_SPEED = 500.0f;
+constexpr float ENEMY_FIRE_COOLDOWN = 0.8f;
+constexpr float ENEMY_PROJECTILE_SPEED = 300.0f;
+
 constexpr float PROJECTILE_RADIUS = 5.0f;
 
 void initPlayer(GameState* state) {
@@ -35,6 +37,8 @@ void initGameplay(GameState* state) {
   initPlayer(state);
   state->swarm.reset();
   state->projectilePool.reset();
+  state->enemyProjectilePool.reset();
+  state->enemyFireCooldown = ENEMY_FIRE_COOLDOWN;
 }
 
 void Player::update(float dt) {
@@ -69,10 +73,10 @@ void playerShoot(GameState& state) {
     PlaySound(state.resources.laserSound);
 }
 
-void Projectile::spawn(Vector2 from, Vector2 dir) {
+void Projectile::spawn(Vector2 from, Vector2 dir, float speed) {
   pos = from;
   this->dir = dir;
-  speed = PROJECTILE_SPEED;
+  this->speed = speed;
   radius = PROJECTILE_RADIUS;
   active = true;
 }
@@ -87,6 +91,26 @@ void Projectile::draw(const Texture2D& texture) const {
   if (!active) return;
   drawOffset(texture, pos, WHITE);
   DrawCircleLinesV(pos, radius, RED);
+}
+
+void updateEnemyFire(GameState& state, float dt) {
+  state.enemyFireCooldown -= dt;
+  if (state.enemyFireCooldown > 0.0f) return;
+
+  Enemy* shooter = nullptr;
+
+  int seen = 0;
+  for (Enemy& enemy : state.swarm) {
+    if (!enemy.active) continue;
+    ++seen;
+    if (GetRandomValue(1, seen) == 1) shooter = &enemy;
+  }
+
+  if (shooter) {
+    state.enemyProjectilePool.fire(shooter->pos, {0.0f, 1.0f},
+                                   ENEMY_PROJECTILE_SPEED);
+  }
+  state.enemyFireCooldown = ENEMY_FIRE_COOLDOWN;
 }
 
 void Enemy::moveHorizontally(Vector2 dir, float speed, float deltaTime) {
@@ -112,6 +136,7 @@ void detectBulletEnemyCollisions(GameState& state) {
         PlaySound(state.resources.explosionSound);
         bullet.deactivate();
         state.swarm.deactivate(enemy);
+        // REFACTOR: should be state.score.add(enemy.scoreValue);
         state.score += enemy.scoreValue;
       }
     }
@@ -124,18 +149,36 @@ void detectPlayerEnemyCollisions(GameState& state) {
 
     if (overlaps(state.player, enemy)) {
       state.swarm.deactivate(enemy);
+      // REFACTOR: should be state.player.die();
       state.player.health = 0;
     }
   }
 }
 
+void detectEnemyBulletPlayerCollisions(GameState& state) {
+  for (Projectile& bullet : state.enemyProjectilePool) {
+    if (!bullet.active) continue;
+
+    if (overlaps(state.player, bullet)) {
+      bullet.deactivate();
+      // REFACTOR: should be state.player.takeDamage();
+      state.player.health -= 1;
+    }
+  }
+}
+
 std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
+  // REFACTOR: the return value of swarm.update() is unclear
+  // REFACTOR: should be state.player.die();
   if (state.swarm.update(dt)) state.player.health = 0;
   state.player.update(dt);
   playerShoot(state);
+  updateEnemyFire(state, dt);
   state.projectilePool.update(dt);
+  state.enemyProjectilePool.update(dt);
   detectBulletEnemyCollisions(state);
   detectPlayerEnemyCollisions(state);
+  detectEnemyBulletPlayerCollisions(state);
 
   if (state.swarm.activeCount() <= 0) state.victory = true;
   if (state.victory || state.player.health <= 0)
@@ -151,6 +194,7 @@ void SceneGameplay::draw(const GameState& state) const {
   state.player.draw(state.resources.playerTexture);
   state.swarm.draw(state.resources.enemyTexture);
   state.projectilePool.draw(state.resources.laserTexture);
+  state.enemyProjectilePool.draw(state.resources.laserTexture);
   drawHud(state.player.health, state.score);
 
   EndDrawing();
