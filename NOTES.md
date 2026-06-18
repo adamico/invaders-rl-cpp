@@ -18,10 +18,10 @@
 2. [DONE L0002] constexpr instead of #define constants
 3. [DONE L0003] range-for / std::array instead of FOR_EACH_* macros
 4. [DONE L0004] const-correctness (draw path) — bridge step before methods
-5. [NEXT L0005] Entity classes — start with Projectile (smallest), then Enemy, Player.
-   Each owns update()/draw(); draw() is const. Tracer-bullet one entity at a time, keep buildable.
-6. Scene base class + polymorphism instead of enum switch
+5. [DONE L0005] Entity classes — Projectile/Player/Enemy own update()/draw()/spawn; swarm logic
+   stays free (C.4). Screen-size unified on windowSize constexpr.
+6. [NEXT L0006] Scene base class + polymorphism instead of enum switch — introduces inheritance,
+   virtual functions, virtual destructor, and likely unique_ptr + move semantics (deferred since L1).
 
 ## Deferred tidy-ups
-- Mixed screen-size source: Update* use `windowSize` global, Init* use GetScreenWidth(). Reconcile
-  during entity refactor.
+- (resolved) Mixed screen-size source — unified on windowSize in L0005.

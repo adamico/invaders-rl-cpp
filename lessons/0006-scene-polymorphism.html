@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 6 · Scene polymorphism</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 06 · Refactor · Capstone</span>
+<h1>Scenes that know themselves</h1>
+<p class="subtitle">Replace the <code>enum</code> + <code>switch</code> with a <code>Scene</code> hierarchy. This is where inheritance, <code>virtual</code>, the virtual destructor, and <code>unique_ptr</code> + move all earn their place at once.</p>
+
+<h2>What's wrong with the switch</h2>
+<p>Your loop dispatches on an enum:</p>
+<pre>switch (state.currentScene) {
+  case TITLE:    UpdateTitle(&state);    DrawTitle(&state);    break;
+  case GAMEPLAY: UpdateGameplay(&state, dt); DrawGameplay(&state); break;
+  case GAMEOVER: UpdateGameover(&state); DrawGameover(&state); break;
+}</pre>
+<p>It works, but every new scene (pause menu, settings, level-complete) forces you to edit the
+<code>enum</code>, edit <em>this</em> switch, edit a second switch if one exists elsewhere, and add a
+matching pair of free functions. The knowledge of "what scenes exist" is scattered. This violates the
+<strong>open–closed principle</strong>: you want to add behaviour by adding a <em>type</em>, not by
+editing existing control flow. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rh-domain">Core Guidelines C.120: use class hierarchies to represent concepts with inherent hierarchical structure</a>]</span></p>
+
+<h2>The tool: an abstract base class</h2>
+<p>Define an interface every scene must satisfy, then let each scene <em>be</em> a type:</p>
+<pre><span class="cm">// scene.h</span>
+struct Scene {
+  <span class="add">virtual void update(GameState&amp; state, float dt) = 0;   // = 0 : pure virtual, no body</span>
+  <span class="add">virtual void draw(const GameState&amp; state) const = 0;</span>
+  <span class="add">virtual ~Scene() = default;                            // MUST be virtual — see below</span>
+};</pre>
+
+<p>Three pieces of new vocabulary, each doing real work:</p>
+<ul>
+<li><strong><code>virtual</code></strong> — "resolve which override to call at <em>runtime</em>, based on the
+object's actual type," not at compile time. This is the dispatch that replaces your <code>switch</code>.</li>
+<li><strong><code>= 0</code> (pure virtual)</strong> — "this base provides no implementation; every
+concrete scene <em>must</em> supply one." It also makes <code>Scene</code> <em>abstract</em>: you can't
+create a bare <code>Scene</code>, only a <code>TitleScene</code> etc. The compiler enforces the contract.</li>
+<li><strong><code>virtual ~Scene()</code></strong> — the one that bites everyone. Read the box.</li>
+</ul>
+
+<div class="why">
+<h3>Why the destructor MUST be virtual</h3>
+<p>You'll hold scenes through a base pointer: <code>unique_ptr&lt;Scene&gt;</code>. When it deletes a
+<code>GameplayScene</code> <em>through that <code>Scene*</code></em>, the runtime needs to know to run
+<code>~GameplayScene</code>, not just <code>~Scene</code>. Without <code>virtual ~Scene()</code>, only
+the base destructor runs — derived members leak. It's undefined behaviour, and it's silent. Rule:
+<strong>any class meant to be inherited from and deleted via a base pointer needs a virtual
+destructor.</strong> <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-virtual">Core Guidelines C.35</a>]</span></p>
+</div>
+
+<h2>Each scene becomes a class</h2>
+<p>Move the body of each <code>Update*</code>/<code>Draw*</code> pair into an override. Your scenes are
+stateless (they operate on the shared <code>GameState</code>), so the classes are tiny:</p>
+<pre><span class="cm">// scene_title.h</span>
+struct TitleScene : Scene {
+  void update(GameState&amp; state, float dt) <span class="hi">override</span>;
+  void draw(const GameState&amp; state) const <span class="hi">override</span>;
+};</pre>
+<pre><span class="cm">// scene_title.cpp</span>
+void TitleScene::update(GameState&amp; state, float) {   <span class="cm">// dt unused here, fine to omit name</span>
+  if (IsKeyPressed(KEY_SPACE)) state.currentScene = GAMEPLAY;
+}
+void TitleScene::draw(const GameState&amp; state) const {
+  BeginDrawing();
+  ClearBackground(BLACK);
+  CenterText(TITLE_TEXT, windowSize.y / 2, 40, WHITE);
+  CenterText(SUBTITLE_TEXT, windowSize.y / 2 + 100, 20, WHITE);
+  EndDrawing();
+}</pre>
+<p><strong><code>override</code></strong> is a safety keyword: it tells the compiler "this is meant to
+replace a base virtual." If your signature doesn't exactly match one (a stray missing
+<code>const</code>, wrong param type), you get an error instead of silently creating a brand-new
+unrelated function that never gets called. Always write <code>override</code>.</p>
+
+<h2>Ownership &amp; transitions — where <code>unique_ptr</code> + move arrive</h2>
+<p>Keep your existing <code>currentScene</code> enum as the <em>transition signal</em> (scenes already
+set it). A <strong>factory</strong> turns that enum into the matching scene object:</p>
+<pre><span class="cm">// scene.cpp — returns ownership of a freshly-built scene</span>
+std::unique_ptr&lt;Scene&gt; makeScene(GameScene which) {
+  switch (which) {
+    case TITLE:    return std::make_unique&lt;TitleScene&gt;();
+    case GAMEPLAY: return std::make_unique&lt;GameplayScene&gt;();
+    case GAMEOVER: return std::make_unique&lt;GameoverScene&gt;();
+  }
+  return nullptr;
+}</pre>
+
+<blockquote><strong>"Wait, there's still a switch!"</strong> Yes — but exactly one, in one place, doing
+one job: construction. The per-frame dispatch (the part that grew with every feature) is gone, replaced
+by a virtual call. Centralising the remaining switch in a factory is the accepted trade-off.</blockquote>
+
+<p><a href="https://en.cppreference.com/w/cpp/memory/unique_ptr"><code>std::unique_ptr&lt;Scene&gt;</code></a>
+is an owning pointer with RAII baked in (lesson 1, now automatic): exactly one owner, and it deletes the
+scene when reassigned or destroyed — through that virtual destructor. You **cannot copy** a
+<code>unique_ptr</code> (two owners would double-delete — same logic as your <code>GameResources</code>).
+You can only <strong>move</strong> it: transfer ownership, leaving the source empty.</p>
+
+<pre><span class="cm">// main.cpp</span>
+GameState state = {};
+InitGameplay(&amp;state);
+state.currentScene = TITLE;
+
+<span class="add">std::unique_ptr&lt;Scene&gt; current = makeScene(TITLE);   // ownership moves out of the factory</span>
+GameScene shown = TITLE;
+
+while (!WindowShouldClose()) {
+  <span class="add">if (state.currentScene != shown) {                 // a scene requested a transition</span>
+    <span class="add">current = makeScene(state.currentScene);         // old scene deleted, new one moved in</span>
+    <span class="add">shown = state.currentScene;</span>
+  }
+  current-&gt;update(state, GetFrameTime());             <span class="cm">// virtual dispatch — no switch</span>
+  current-&gt;draw(state);
+}</pre>
+
+<div class="why">
+<h3>Where move actually happens (the bit deferred since lesson 1)</h3>
+<p><code>make_unique</code> builds a scene and returns a <code>unique_ptr</code> by value;
+<code>current = makeScene(...)</code> <strong>move-assigns</strong> it — the temporary's ownership is
+transferred into <code>current</code>, and the old scene <code>current</code> held is deleted first.
+No copy ever happens (it can't — copy is deleted). This is move semantics doing its job invisibly:
+ownership flows, nothing is duplicated.</p>
+</div>
+
+<h2>Your task <span class="tag">feedback loop</span></h2>
+<ol class="steps">
+<li>Create <code>scene.h</code> with the abstract <code>Scene</code> base (3 virtuals incl. the destructor).</li>
+<li>Convert each scene to a <code>struct XScene : Scene</code> with <code>override</code>s; move the function bodies in. Keep the <code>CenterText</code> helper where it is.</li>
+<li>Add <code>makeScene</code> (factory) — the one remaining switch.</li>
+<li>Rewrite <code>main</code>'s loop to hold a <code>unique_ptr&lt;Scene&gt;</code> and rebuild on transition. <code>#include &lt;memory&gt;</code>.</li>
+<li>Delete the old free <code>Update*</code>/<code>Draw*</code> declarations + the dispatch switch.</li>
+<li>Build &amp; play: Title → (space) → Gameplay → die → Gameover → (enter) → Title. Every transition must work.</li>
+</ol>
+
+<blockquote><strong>Two traps to expect:</strong> (1) forget <code>virtual ~Scene()</code> and the build
+may pass but leak — add it from the start. (2) <code>GameoverScene::update</code> calls
+<code>InitGameplay</code> and sets <code>currentScene = TITLE</code>; keep that logic intact so restart
+still works. Run the full transition cycle, not just the first screen.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="1">
+  <div class="q">What does <code>virtual</code> change about a function call?</div>
+  <button data-fb="No — overload resolution is compile-time and unrelated to virtual.">It picks the version by argument count</button>
+  <button data-fb="Right — virtual dispatch chooses the override by the object's runtime type.">The override is chosen at runtime by actual type</button>
+  <button data-fb="No — virtual has a tiny indirection cost, not a speedup.">It makes the function inline and faster</button>
+  <button data-fb="No — that's a default argument, not virtual dispatch.">It supplies a default value for the call</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why can a <code>unique_ptr</code> be moved but not copied?</div>
+  <button data-fb="Exactly — single ownership; a copy would give two owners and a double delete.">It models single ownership; copying would double-delete</button>
+  <button data-fb="No — unique_ptr has no such size limit.">It is too large to copy efficiently</button>
+  <button data-fb="No — copying is deleted by design, not merely slow.">Copying works but is just slower than moving</button>
+  <button data-fb="No — it holds one object; that's unrelated to copy vs move.">It can only ever point at one type</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why must <code>~Scene()</code> be <code>virtual</code>?</div>
+  <button data-fb="No — abstractness comes from = 0 on a method, not the destructor.">To make the Scene class abstract</button>
+  <button data-fb="No — virtual doesn't speed up destruction.">To destroy scenes faster at runtime</button>
+  <button data-fb="Right — deleting a derived object via Scene* must run the derived destructor.">So deleting via Scene* runs the derived destructor</button>
+  <button data-fb="No — copying is a separate concern from the destructor.">To allow scenes to be copied safely</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#S-class">Core Guidelines — C.hier (class hierarchies)</a>,
+especially C.35 (virtual destructor) and C.128 (use <code>override</code>). Also
+<a href="https://en.cppreference.com/w/cpp/memory/unique_ptr">cppreference: unique_ptr</a> for the move-only ownership model. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> This is the deepest lesson — good questions: Should a
+<code>SceneManager</code> class own the <code>unique_ptr</code> and the transition logic instead of
+<code>main</code>? Could <code>update</code> <em>return</em> the next scene rather than writing the enum
+(removing the last switch entirely)? When is virtual dispatch too slow to use? Ask before you call the
+port "done" — this is where wisdom starts.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0005-entity-classes.html">Lesson 05: entity classes</a></span>
+  <span>🎉 Final roadmap item — the C→C++ port is complete after this.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 06 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
