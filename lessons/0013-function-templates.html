@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 13 · Function templates</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 13 · Refactor · Templates (new mechanic)</span>
+<h1>One collision test for every pair</h1>
+<p class="subtitle">Your two collision functions repeat the same circle test against different types. They have no shared base class — and they don't need one. This is the problem <strong>function templates</strong> were built for: write the logic once, let the compiler stamp out a version for each type you use it with.</p>
+
+<h2>The duplication</h2>
+<pre>CheckCollisionCircles(<span class="hi">bullet</span>.pos, <span class="hi">bullet</span>.radius, enemy.pos, enemy.radius)   <span class="cm">// bullet × enemy</span>
+CheckCollisionCircles(<span class="hi">state.player</span>.pos, <span class="hi">state.player</span>.radius, enemy.pos, enemy.radius)   <span class="cm">// player × enemy</span></pre>
+<p>Identical except for the types. <code>Player</code>, <code>Enemy</code>, <code>Projectile</code> are
+three unrelated structs, but they all happen to expose <code>.pos</code> and <code>.radius</code>. You
+can't write one normal function that takes "anything with pos and radius" — C++ is statically typed, and
+these share no base class. A template lets you say it anyway.</p>
+
+<h2>The tool: a function template</h2>
+<pre><span class="cm">// NEW FILE: include/collision.h</span>
+#pragma once
+#include "raylib.h"
+
+<span class="add">template &lt;typename A, typename B&gt;</span>
+<span class="add">bool overlaps(const A&amp; a, const B&amp; b) {</span>
+  <span class="add">return CheckCollisionCircles(a.pos, a.radius, b.pos, b.radius);</span>
+<span class="add">}</span></pre>
+<p>Read it as a <em>recipe</em>, not a function. <code>template &lt;typename A, typename B&gt;</code> says
+"A and B are placeholders for types I'll fill in later." When you call <code>overlaps(bullet, enemy)</code>,
+the compiler <strong>instantiates</strong> a concrete <code>overlaps&lt;Projectile, Enemy&gt;</code> for
+you; <code>overlaps(player, enemy)</code> generates a second one. You write the logic once; the compiler
+writes the type-specific copies. <span class="cite">[<a href="https://en.cppreference.com/w/cpp/language/function_template">cppreference: function templates</a>]</span></p>
+
+<div class="why">
+<h3>Compile-time duck typing — and how it differs from your <code>Scene</code> hierarchy</h3>
+<p>Lesson 6 gave you <strong>runtime</strong> polymorphism: a <code>Scene*</code> picks the override by the
+object's actual type while the game runs, via a vtable (a small indirection cost). Templates are
+<strong>compile-time</strong> polymorphism: there's no base class, no vtable, no runtime cost — the
+compiler bakes a separate, fully-typed function for each pair before the program runs. The only "interface"
+is implicit: <em>any type with <code>.pos</code> and <code>.radius</code> fits</em>. That's
+"<strong>duck typing</strong>" — if it has the members the template uses, it works. If it doesn't, you get
+a compile error at the call site, not a runtime crash. Two tools, two trade-offs: use virtual when you need
+one container of mixed types chosen at runtime (scenes); use templates when the types are known at compile
+time and you just want to stop copy-pasting (this).</p>
+</div>
+
+<h2>The gotcha: template definitions live in headers</h2>
+<p>This is the one mechanical rule that trips everyone. A normal function is <em>declared</em> in a header,
+<em>defined</em> in a <code>.cpp</code>. A template can't be — the compiler needs the <strong>full body</strong>
+visible at every call site to instantiate it for that site's types. If you put <code>overlaps</code>'s body
+in a <code>.cpp</code>, other files see only a declaration, can't instantiate it, and you get a
+<em>linker</em> error (undefined reference). So: <strong>templates go entirely in the header</strong>, body
+and all. That's why <code>collision.h</code> above has no <code>collision.cpp</code>. <span class="cite">[<a href="https://isocpp.org/wiki/faq/templates#templates-defn-vs-decl">isocpp FAQ: why can't I separate template definitions</a>]</span></p>
+
+<h2>Apply it</h2>
+<pre><span class="cm">// scene_gameplay.cpp — add #include "collision.h"</span>
+
+<span class="cm">// CheckBulletEnemyCollisions</span>
+if (<span class="add">overlaps(bullet, enemy)</span>) {            <span class="cm">// was CheckCollisionCircles(bullet.pos, ...)</span>
+  PlaySound(state.resources.explosionSound);
+  bullet.deactivate();
+  state.swarm.deactivate(enemy);
+  state.score += enemy.scoreValue;
+}
+
+<span class="cm">// CheckPlayerEnemyCollisions</span>
+if (<span class="add">overlaps(state.player, enemy)</span>) {       <span class="cm">// same helper, different type pair</span>
+  state.swarm.deactivate(enemy);
+  state.player.health = 0;
+}</pre>
+<p>Both call sites now read as intent — "does this bullet overlap that enemy?" — and the circle math exists
+in exactly one place. Add a new collidable later (an enemy bullet, a powerup) and <code>overlaps</code>
+already works with it, for free, as long as it carries <code>.pos</code> and <code>.radius</code>.</p>
+
+<div class="why">
+<h3>The other two smells — addressed honestly</h3>
+<p><strong>Name lies / split check from effect:</strong> I floated this last lesson. For an
+<em>immediate-mode</em> sweep that acts the instant it finds a hit, splitting "detect → return a list →
+apply later" adds a container and a second loop for no real gain — the effect isn't reused or tested in
+isolation here. That's overengineering; skip it. A cheaper honesty win is just renaming, e.g.
+<code>resolveBulletHits</code> over <code>CheckBulletEnemyCollisions</code> (it resolves, not merely
+checks). Optional. <strong>Duplicated <code>if (!active) continue;</code>:</strong> still there, still
+deferred — that one genuinely points at a class template (<code>Pool&lt;T&gt;</code>) and is the next arc,
+not this one.</p>
+</div>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/collision.h</code> <strong>(new)</strong> — the <code>overlaps</code> function template, body and all, in the header. No <code>.cpp</code>.</li>
+<li><code>src/scene_gameplay.cpp</code> — <code>#include "collision.h"</code>; replace both <code>CheckCollisionCircles(...)</code> calls with <code>overlaps(a, b)</code>.</li>
+<li>No Makefile change — header-only, and <code>src/*.cpp</code> is globbed anyway.</li>
+<li>Build &amp; play: shooting and player-collision behave exactly as before.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) Don't make a <code>collision.cpp</code> — template in a
+<code>.cpp</code> = linker "undefined reference." Header only. (2) The template needs <code>a.pos</code>/
+<code>a.radius</code> to exist; if you ever pass a type without them, the error appears <em>at the call
+site on instantiation</em> and can look verbose — read the first line, it names the missing member. (3)
+<code>const A&amp;</code> — pass by const reference (lesson 4): no copy, and you're only reading.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why can <code>overlaps</code> accept <code>Player</code>, <code>Enemy</code>, and <code>Projectile</code> with no shared base class?</div>
+  <button data-fb="No — there's no inheritance here at all; that's the point.">They secretly inherit from a hidden Collidable base</button>
+  <button data-fb="No — virtual dispatch is runtime; templates resolve at compile time.">The vtable routes each call to the right type</button>
+  <button data-fb="Right — the template instantiates per type pair; any type with .pos/.radius fits (duck typing).">The compiler stamps a version per type that has the needed members</button>
+  <button data-fb="No — they aren't converted; each keeps its own type in its own instantiation.">All three are implicitly converted to one common type</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why must the template's body live in the header?</div>
+  <button data-fb="Exactly — each call site needs the full body to instantiate for its types; a .cpp hides it → linker error.">Every call site needs the body visible to instantiate it</button>
+  <button data-fb="No — headers aren't faster to compile; often the opposite.">Headers compile faster than source files</button>
+  <button data-fb="No — inline isn't the requirement driving this; visibility at instantiation is.">Because all header functions must be inline</button>
+  <button data-fb="No — templates aren't barred from .cpp by syntax; it's the instantiation model.">The compiler forbids templates in .cpp files</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <div class="q">Templates vs the <code>Scene</code> virtual hierarchy — the key difference?</div>
+  <button data-fb="No — both are type-safe; neither sacrifices safety.">Templates are type-unsafe; virtual is safe</button>
+  <button data-fb="Right — templates resolve at compile time with no vtable; virtual dispatches at runtime.">Templates are compile-time, no runtime cost; virtual is runtime dispatch</button>
+  <button data-fb="No — templates can do many types; that's their whole purpose.">Virtual supports many types, templates only one</button>
+  <button data-fb="No — templates need no base class; that's their advantage here.">Templates require a common base class, virtual doesn't</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://en.cppreference.com/w/cpp/language/function_template">cppreference — function templates</a>,
+and <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#S-templates">Core Guidelines T: templates and generic programming</a>
+(T.1 use templates to raise the level of abstraction, T.10–T.13). If you want to <em>name</em> the
+"has .pos and .radius" requirement explicitly, that's C++20 <a href="https://en.cppreference.com/w/cpp/language/constraints">concepts</a> — optional, mention it and I'll show you. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: how would a C++20 <em>concept</em> turn the cryptic
+instantiation error into a clear "Projectile doesn't satisfy Collidable" message? Does each instantiation
+bloat the binary (template code bloat), and does it matter here? And the next arc: the duplicated
+active-loop across <code>Swarm</code> and <code>ProjectilePool</code> — is that a <em>class</em> template
+<code>Pool&lt;T&gt;</code>, and what would it cost to unify them?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0012-tell-dont-ask.html">Lesson 12: Tell, Don't Ask</a></span>
+  <span>First template. Next candidate: class template Pool&lt;T&gt; to unify Swarm + ProjectilePool.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 13 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

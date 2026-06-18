@@ -47,9 +47,15 @@
     Swarm::deactivate(Enemy&) idempotent guard owns flag+count atomically; Projectile::deactivate()
     inline. Collision fns stay FREE but TELL not poke. Verified: 0 activeCount writes outside swarm.cpp.
     See LR-0013. Side: header-inline methods (implicitly inline/ODR-safe), clang-format short-if.
+13. [LESSON DELIVERED L0013, awaiting apply] Function templates (NEW MECHANIC — biggest profile gap).
+    Motivated by duplicated CheckCollisionCircles in the two collision fns. overlaps<A,B>(a,b) in
+    header-only collision.h = compile-time duck typing (any type w/ .pos+.radius), contrasted vs L6
+    runtime virtual dispatch. Key gotcha taught: template defs MUST live in headers (else linker
+    undefined-ref). Addressed deferred smells honestly: detect/effect split = overengineering for
+    immediate-mode (skip, maybe just rename); if(!active)continue dup -> next arc = class template.
 Possible future arcs (confirm with user before starting a new mission):
-- Make swarm/pool members private; split collision check from effect; templated Pool<T> / active-iter
-  helper; per-scene state / pause overlay (scene stack).
+- Class template Pool<T> unifying Swarm+ProjectilePool (+ active-iteration helper); C++20 concepts to
+  name the Collidable requirement; make swarm/pool members private; per-scene state / pause overlay.
 - Per-scene state as class members (pause menu, settings, level-complete).
 - Revisit the repo's original RL-environment goal (currently out of scope in MISSION.md).
 
