@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 2 · constexpr instead of #define</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 02 · Refactor</span>
+<h1>Give your constants a type</h1>
+<p class="subtitle">The <code>#define</code> wall at the top of <code>scene_gameplay.cpp</code> is text substitution with no type, no scope, no safety. <code>constexpr</code> fixes all three.</p>
+
+<h2>What <code>#define</code> actually does</h2>
+<p>A macro is not a constant. It's a <em>find-and-replace</em> the preprocessor runs <strong>before</strong>
+the compiler ever sees your code. <code>#define ENEMY_SPEED 50.0f</code> means "paste the text
+<code>50.0f</code> everywhere the letters <code>ENEMY_SPEED</code> appear." The compiler never knows a
+thing called <code>ENEMY_SPEED</code> existed.</p>
+
+<p>That causes three concrete problems, all present in your file:</p>
+
+<h3>1 — No type</h3>
+<pre>#define ENEMY_SPEED 50.0f      <span class="cm">// is this float? double? the compiler decides per-use</span>
+#define MAX_ENEMIES_PER_ROW 11 <span class="cm">// int</span></pre>
+<p>Look at line 143: <code>int speed = state-&gt;enemySpeed;</code> — and <code>enemySpeed</code> is
+declared <code>int</code> in your struct, even though <code>ENEMY_SPEED</code> is <code>50.0f</code>.
+The float silently truncates. A typed constant makes the mismatch visible (and fixable).</p>
+
+<h3>2 — No scope</h3>
+<p>Macros ignore namespaces, classes, functions — they leak everywhere in the translation unit
+after their <code>#define</code>. Two files each defining <code>ROW_PADDING</code> differently is a
+silent landmine. A <code>constexpr</code> obeys normal scope rules like any variable.</p>
+
+<h3>3 — Invisible to the debugger &amp; error messages</h3>
+<p>Because the name is gone before compilation, your debugger can't show <code>ENEMY_SPEED</code>,
+and a bad expression reports the substituted text, not the name you wrote.</p>
+
+<div class="why">
+<h3>Why this fits the mission</h3>
+<p>"Better-structured" means the compiler understands your intent, not just the preprocessor.
+Typed constants are the groundwork for the entity classes coming later — those classes will hold
+these values as real typed members, and you can't build clean members on top of untyped text macros.</p>
+</div>
+
+<h2>The tool: <code>constexpr</code></h2>
+<p><code>constexpr</code> = "a real, typed, named value the compiler computes at compile time." Same
+zero runtime cost as a macro, but it's a genuine variable: it has a type, obeys scope, shows up in
+the debugger, and participates in overload resolution and templates.
+<span class="cite">[<a href="https://en.cppreference.com/w/cpp/language/constexpr">cppreference: constexpr</a>,
+<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Res-macros2">Core Guidelines ES.31: don't use macros for constants</a>]</span></p>
+
+<pre><span class="del">- #define PLAYER_RADIUS 12.5f</span>
+<span class="add">+ constexpr float PLAYER_RADIUS = 12.5f;</span>
+
+<span class="del">- #define MAX_ENEMIES_PER_ROW 11</span>
+<span class="add">+ constexpr int MAX_ENEMIES_PER_ROW = 11;</span>
+
+<span class="del">- #define ENEMY_SPEED 50.0f</span>
+<span class="add">+ constexpr float ENEMY_SPEED = 50.0f;</span></pre>
+
+<p>Read it as: <code>constexpr</code> (compile-time constant) <code>float</code> (the type) <code>PLAYER_RADIUS</code> (the name) <code>= 12.5f</code> (the value). The type is the thing the macro never had.</p>
+
+<h2>Your task <span class="tag">feedback loop</span></h2>
+<ol class="steps">
+<li>Convert the simple scalar macros (lines 13–15, 19–24) to <code>constexpr</code> with the right type: <code>float</code> for the <code>.0f</code> values, <code>int</code> for the counts/paddings.</li>
+<li>Build. Then look hard at <code>int speed = state-&gt;enemySpeed;</code> (line ~143) and <code>int enemySpeed;</code> in the struct. Now that <code>ENEMY_SPEED</code> is openly <code>float</code>, does <code>enemySpeed</code> want to be <code>float</code> too? Make that call and justify it.</li>
+<li>Leave the <em>function-like</em> macros for now: <code>CANVAS_OFFSET</code>, <code>INITIAL_PLAYER_POS</code>, <code>START_GRID_POS</code>. They build a <code>Vector2</code> and reference <code>windowSize</code> — see the trap below.</li>
+<li>Leave <code>FOR_EACH_PROJECTILE</code> / <code>FOR_EACH_ENEMY</code> entirely — those are lesson 3.</li>
+</ol>
+
+<blockquote><strong>The trap to discover:</strong> try converting <code>INITIAL_PLAYER_POS</code> to
+<code>constexpr Vector2</code>. It references <code>windowSize</code>, which is declared
+<code>extern const Vector2 windowSize;</code> — defined in another file, value not known at compile
+time <em>here</em>. A <code>constexpr</code> needs its value known at compile time. What does the
+compiler say? What keyword could you use instead for a typed constant whose value is set at runtime?
+(Hint: drop <code>constexpr</code>, keep <code>const</code>.) Bring me your answer.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">When is a <code>#define</code> constant substituted into your code?</div>
+  <button data-fb="No — macros are gone before linking; this is the compiler/runtime boundary.">During linking, after compilation</button>
+  <button data-fb="No — the value never reaches runtime as a named entity.">At runtime, on first use</button>
+  <button data-fb="Right. The preprocessor pastes text before the compiler runs.">By the preprocessor, before compilation</button>
+  <button data-fb="The optimizer works on already-compiled code; macros are long gone.">By the optimizer, during code generation</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why prefer <code>constexpr float X = 1.0f;</code> over <code>#define X 1.0f</code>?</div>
+  <button data-fb="Exactly — it is a typed, scoped, named entity the compiler and debugger understand.">It has a type and obeys normal scope rules</button>
+  <button data-fb="No — both cost the same; constexpr is computed at compile time too.">It is faster than a macro at runtime</button>
+  <button data-fb="No — constexpr requires the value be known at compile time, same as a literal macro.">It lets the value change while the game runs</button>
+  <button data-fb="No — it needs no allocation; it is a compile-time value, not heap memory.">It allocates the constant on the heap once</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Res-macros2">Core Guidelines ES.31 &amp; Enum.1</a>
+— "Don't use macros for constants or functions." Short and blunt. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Curious why <code>const</code> vs <code>constexpr</code> matters for
+the <code>windowSize</code> case? Wondering whether these constexprs belong in the <code>.cpp</code> or
+should move into the class as <code>static constexpr</code> members when entities arrive? That's a
+great question to raise — it previews lesson 4.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0001-raii-resources.html">Lesson 01: RAII resources</a></span>
+  <span>Next up: <strong>range-for / std::array</strong> killing the FOR_EACH macros →</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 02 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
