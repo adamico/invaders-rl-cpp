@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 15 · Lambdas & each_active</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 15 · Refactor · Lambdas</span>
+<h1>Hand the loop a function</h1>
+<p class="subtitle">The same four lines keep recurring: <code>for (auto&amp; x : pool.items) if (!x.active) continue; …</code>. Give <code>Pool</code> one method that owns the loop and the active-check, and <em>pass it the body</em> as a lambda. New mechanic: lambdas — anonymous functions you write inline.</p>
+
+<h2>The repetition, one more time</h2>
+<pre><span class="cm">// swarm.cpp — move active enemies</span>
+for (Enemy&amp; e : pool.items) { if (!e.active) continue; e.moveHorizontally(direction, speed, dt); }
+<span class="cm">// projectile_pool.cpp — update active bullets</span>
+for (auto&amp; p : pool.items)  { if (!p.active) continue; p.update(dt); }   <span class="cm">// (Projectile::update self-guards too)</span>
+<span class="cm">// draw, in both</span>
+for (const auto&amp; x : pool.items) { if (!x.active) continue; x.draw(texture); }</pre>
+<p>The loop + the <code>if (!active)</code> filter is identical every time; only the <em>body</em> differs.
+That "everything's the same except this one block" shape is exactly what a lambda lets you factor out:
+keep the loop in one place, pass the varying block in.</p>
+
+<h2>The tool: a member that takes a callable</h2>
+<pre><span class="cm">// pool.h — two overloads (mutating + read-only)</span>
+template &lt;typename T, std::size_t N&gt;
+struct Pool {
+  std::array&lt;T, N&gt; items{};
+  ...
+  <span class="add">template &lt;typename F&gt; void each_active(F fn) {</span>
+    <span class="add">for (T&amp; item : items) if (item.active) fn(item);</span>
+  <span class="add">}</span>
+  <span class="add">template &lt;typename F&gt; void each_active(F fn) const {   // for const methods like draw</span>
+    <span class="add">for (const T&amp; item : items) if (item.active) fn(item);</span>
+  <span class="add">}</span>
+};</pre>
+<p><code>F</code> is a template parameter — <code>each_active</code> accepts <em>any</em> callable: a
+function pointer, a functor, or (what you'll pass) a lambda. Because <code>F</code> is a template, the call
+<code>fn(item)</code> is resolved and inlined at compile time — <strong>zero overhead</strong>, unlike
+<code>std::function</code> which would box it behind an indirection. Same compile-time-generic idea as your
+<code>overlaps</code> and <code>Pool</code> itself. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rt-fo">Core Guidelines T.40: use function objects to pass operations to algorithms</a>]</span></p>
+
+<h2>The new syntax: a lambda</h2>
+<pre><span class="hi">[&amp;]</span><span class="hi">(Enemy&amp; e)</span> <span class="hi">{ e.moveHorizontally(direction, speed, dt); }</span>
+ │     │            │
+ │     │            └─ body — the per-element work
+ │     └─ parameter list — what each_active hands you
+ └─ capture list — which surrounding variables the body may use</pre>
+<p>A lambda is an anonymous function you define right where you use it. The one genuinely new part is the
+<strong>capture list</strong> <code>[&amp;]</code>: the body needs <code>direction</code>, <code>speed</code>,
+<code>dt</code> — locals from the enclosing function. <code>[&amp;]</code> means "capture them
+<em>by reference</em>," so the lambda reads/writes the real variables. (<code>[=]</code> would copy them;
+<code>[]</code> captures nothing and the body couldn't see them at all.) For these per-frame loops you want
+<code>[&amp;]</code>: no copies, and you're operating on live state. <span class="cite">[<a href="https://en.cppreference.com/w/cpp/language/lambda">cppreference: lambda expressions</a>]</span></p>
+
+<h2>Apply it — the do-to-all loops</h2>
+<pre><span class="cm">// swarm.cpp — the horizontal-move loop</span>
+<span class="add">pool.each_active([&amp;](Enemy&amp; e) { e.moveHorizontally(direction, speed, deltaTime); });</span>
+
+<span class="cm">// swarm.cpp — draw (const overload kicks in because draw() is const)</span>
+<span class="add">pool.each_active([&amp;](const Enemy&amp; e) { e.draw(texture); });</span>
+
+<span class="cm">// projectile_pool.cpp — update and draw</span>
+<span class="add">pool.each_active([&amp;](Projectile&amp; p) { p.update(deltaTime); });</span>
+<span class="add">pool.each_active([&amp;](const Projectile&amp; p) { p.draw(texture); });</span></pre>
+<p>The loop and the active-filter now exist once, inside <code>each_active</code>. Each call site states
+just its intent: "for each active enemy, move it." The <code>if (!active) continue;</code> boilerplate is
+gone from these four sites.</p>
+
+<div class="why">
+<h3>Where <code>each_active</code> does NOT fit — and why that's the lesson</h3>
+<p>Two loops in <code>Swarm::update</code> <strong>break early</strong>: the edge-detection loop (flip
+direction on the first enemy at the boundary) and the breach loop (stop at the first enemy past the
+bottom). A lambda <em>cannot</em> <code>break</code> the caller's loop — it's a separate function; all it
+can do is return from itself. So <code>each_active</code> is the wrong tool there; those stay as raw
+<code>for</code> loops. The right tool for "stop at the first match" is a <em>find/any</em>-shaped helper
+(returns a pointer or bool), not a for-each. Knowing which loops are "do to all" (→ <code>each_active</code>)
+versus "find one and stop" (→ leave it, or a different helper) is the actual skill — don't force every loop
+through the same abstraction.</p>
+</div>
+
+<div class="why">
+<h3>Mutating vs const: why two overloads</h3>
+<p><code>draw()</code> is a <code>const</code> method, so when it runs the <code>Pool</code> is
+<code>const</code> and so are its items — the lambda must take <code>const Enemy&amp;</code>. The non-const
+<code>each_active</code> wouldn't compile there. The two overloads let the compiler pick automatically based
+on whether the call site is in a const context. This is const-correctness (lesson 4) flowing through a
+template.</p>
+</div>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/pool.h</code> — add the two <code>each_active</code> overloads (mutating + const).</li>
+<li><code>src/swarm.cpp</code> — convert the horizontal-move loop and the draw loop to <code>pool.each_active(...)</code>. <strong>Leave</strong> the edge-detection and breach loops as raw <code>for</code> (they break).</li>
+<li><code>src/projectile_pool.cpp</code> — convert the update and draw loops.</li>
+<li>No Makefile change; <code>pool.h</code> stays header-only.</li>
+<li>Build &amp; play full cycle: movement, firing, drawing, victory, breach all identical.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) <code>draw</code>'s lambda must take <code>const Enemy&amp;</code> /
+<code>const Projectile&amp;</code>, or the const overload won't match. (2) Don't convert the breaking loops —
+a lambda can't <code>break</code>; if you find yourself wanting to, that loop isn't an
+<code>each_active</code>. (3) Capture <code>[&amp;]</code>, not <code>[=]</code> — you're mutating live
+state and don't want copies. (4) <code>reset()</code> in both classes touches <em>inactive</em> slots too
+(it builds/clears all of them), so it stays a plain loop over <code>pool.items</code> — <code>each_active</code>
+would skip the inactive ones.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">What does the <code>[&amp;]</code> in <code>[&amp;](Enemy&amp; e){…}</code> do?</div>
+  <button data-fb="No — that's the parameter list's job, not the capture's.">Declares the element the lambda receives each call</button>
+  <button data-fb="No — [=] copies; [&] does not.">Copies the enclosing locals into the lambda</button>
+  <button data-fb="Right — it captures enclosing locals by reference so the body uses the live variables.">Captures enclosing variables by reference</button>
+  <button data-fb="No — captures aren't about return type; this lambda returns void.">Specifies the lambda's return type</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why can't the edge-detection loop become <code>each_active</code>?</div>
+  <button data-fb="Exactly — it breaks at the first boundary enemy, and a lambda can't break the caller's loop.">It stops early, and a lambda cannot break the outer loop</button>
+  <button data-fb="No — it reads .active fine; that's not the obstacle.">Enemies there don't have an active flag</button>
+  <button data-fb="No — it can mutate via [&] capture just fine.">A lambda cannot modify captured variables</button>
+  <button data-fb="No — const-ness isn't the issue; early exit is.">draw is const but update is not</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <div class="q">Why is <code>each_active</code> templated on <code>F</code> rather than taking a <code>std::function</code>?</div>
+  <button data-fb="No — std::function would compile too; the reason is cost.">std::function cannot hold a lambda</button>
+  <button data-fb="Right — a template inlines the call with zero overhead; std::function adds an indirection.">The template inlines the call; std::function boxes it behind indirection</button>
+  <button data-fb="No — both can be const-correct via overloads.">std::function can't be used in a const method</button>
+  <button data-fb="No — templates don't restrict capture lists.">Only templates allow reference captures</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://en.cppreference.com/w/cpp/language/lambda">cppreference — lambda expressions</a>
+(capture lists especially), and <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#S-functions">Core Guidelines F.50/F.52</a>
+(use lambdas; prefer capturing by reference for local use). See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: now that <code>each_active</code> and <code>acquire</code>
+cover iteration, can <code>Pool::items</code> finally go <code>private</code> — and what still reaches in
+directly (reset, collisions)? Should the collision free-functions also use <code>each_active</code>
+(nested lambdas — worth it or not)? When does capturing by reference become dangerous (lambda outliving
+what it captured)?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0014-class-template-pool.html">Lesson 14: class template Pool</a></span>
+  <span>Lambdas in hand. Next: make Pool::items private · find-shaped helper for the breaking loops.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 15 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

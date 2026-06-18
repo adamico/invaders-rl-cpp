@@ -57,9 +57,13 @@
     ProjectilePool. Derived activeCount() -> stored field deleted (sequel-to-L12 payoff). fire() ->
     acquire()+spawn. Header-only. Applied one pass, working. User renamed method to camelCase
     activeCount(). See LR-0015. Templates gap now substantively covered (L13 fn + L14 class).
+15. [DONE L0015] Lambdas via Pool::eachActive(F) (named eachActive, camelCase house style). Mutating+
+    const overloads, 4 do-to-all loops converted; break-early loops (edge/breach) + reset correctly
+    left raw. [&] capture. One pass, working. See LR-0016. Mechanics arc (fn templates -> class
+    templates -> lambdas) well covered.
 Possible future arcs (confirm with user before starting a new mission):
-- each_active(lambda) helper on Pool (NEW: lambdas) -> kills if(!active)continue dup + the .pool.items
-  reach; make Pool::items private; C++20 concepts (name Collidable); per-scene state / pause overlay.
+- Make Pool::items private (what still reaches in: reset, collisions); find-shaped helper for breaking
+  loops; collisions via nested each_active; C++20 concepts; per-scene state / pause overlay.
 - Per-scene state as class members (pause menu, settings, level-complete).
 - Revisit the repo's original RL-environment goal (currently out of scope in MISSION.md).
 
