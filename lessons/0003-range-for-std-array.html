@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 3 · range-for &amp; std::array</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 03 · Refactor</span>
+<h1>Kill the loop macros</h1>
+<p class="subtitle"><code>FOR_EACH_PROJECTILE</code> and <code>FOR_EACH_ENEMY</code> are macros faking a language feature C++ already has: the range-based for loop.</p>
+
+<h2>What the macros are hiding</h2>
+<p>You wrote these to avoid repeating pointer arithmetic:</p>
+<pre>#define FOR_EACH_ENEMY(enemyPtr, enemyArray)                  \
+  for (Enemy* enemyPtr = enemyArray;                          \
+       enemyPtr < enemyArray + MAX_ENEMIES; enemyPtr++)</pre>
+<p>They work, but they carry every macro tax from lesson 2 — no type checking, invisible to tools,
+and they hardcode <code>MAX_ENEMIES</code> / <code>MAX_PROJECTILES</code> so the loop and the array
+can silently drift apart. They also force <code>enemy-&gt;</code> arrow syntax everywhere, a tell that
+you're juggling raw pointers by hand.</p>
+
+<h2>The tool: range-based for</h2>
+<p>C++ can iterate any array or container directly. You already used it once in <code>InitBullets</code>'s
+cousin — here it is on the enemies:</p>
+<pre><span class="cm">// before</span>
+FOR_EACH_ENEMY(enemy, state-&gt;enemies) {
+  if (!enemy-&gt;active) continue;
+  enemy-&gt;pos = ...;
+}
+
+<span class="cm">// after — note the & : we want a reference so we can mutate the real element</span>
+for (Enemy<span class="hi">&</span> enemy : state-&gt;enemies) {
+  if (!enemy.active) continue;
+  enemy.pos = ...;
+}</pre>
+
+<div class="why">
+<h3>The one rule that matters here: <code>&</code> or no <code>&</code></h3>
+<p><code>for (Enemy&amp; e : ...)</code> binds <code>e</code> to the <em>actual</em> array element — writes
+stick. <code>for (Enemy e : ...)</code> copies each element into <code>e</code> — writes are thrown
+away at the end of the iteration. Every one of your loops <em>mutates</em> (sets <code>active</code>,
+moves <code>pos</code>), so they all need <code>Enemy&amp;</code> / <code>Projectile&amp;</code>. Drop the
+<code>&amp;</code> and the game silently stops working while still compiling — the classic beginner trap.
+<span class="cite">[<a href="https://en.cppreference.com/w/cpp/language/range-for">cppreference: range-for</a>]</span></p>
+</div>
+
+<p>And because <code>enemy</code> is now a reference, not a pointer, member access flips from
+<code>enemy-&gt;active</code> to <code>enemy.active</code> (dot, not arrow).</p>
+
+<h2>Why range-for is safe where the macro wasn't</h2>
+<p>The macro said "go from <code>array</code> to <code>array + MAX_ENEMIES</code>." If the array's real
+size ever differs from that constant, you walk off the end — undefined behaviour. Range-for asks the
+array itself for its bounds; loop and storage <strong>cannot</strong> disagree. That's the structural
+win, and it sets up the next step.</p>
+
+<h2>Optional second step: <code>std::array</code></h2>
+<p>Right now <code>bullets</code>/<code>enemies</code> are C arrays in <code>game.h</code>:</p>
+<pre>Projectile bullets[MAX_PROJECTILES];
+Enemy enemies[MAX_ENEMIES];</pre>
+<p>A C array decays to a bare pointer the moment you pass it to a function — it forgets its own size.
+<a href="https://en.cppreference.com/w/cpp/container/array"><code>std::array</code></a> is the same
+fixed-size, zero-overhead storage, but it <em>remembers</em>: it carries <code>.size()</code>, works
+with range-for cleanly, and refuses to silently decay.</p>
+<pre><span class="cm">// game.h</span>
+#include &lt;array&gt;
+<span class="add">std::array&lt;Projectile, MAX_PROJECTILES&gt; bullets;</span>
+<span class="add">std::array&lt;Enemy, MAX_ENEMIES&gt; enemies;</span></pre>
+<p>Range-for over them is unchanged. <code>state-&gt;enemies[i]</code> indexing still works. The payoff
+grows in lesson 4 when functions take these by reference and keep their size.</p>
+
+<h2>Your task <span class="tag">feedback loop</span></h2>
+<ol class="steps">
+<li>Replace every <code>FOR_EACH_PROJECTILE</code> / <code>FOR_EACH_ENEMY</code> use with a range-for. There are ~9 of them — do them one at a time and rebuild often.</li>
+<li>For each, decide <code>&amp;</code> vs copy. They all mutate, so they all want <code>&amp;</code>. Convert <code>-&gt;</code> to <code>.</code> as you go.</li>
+<li>Mind the nested loop in <code>CheckBulletEnemyCollisions</code> — two range-fors, both by reference.</li>
+<li>Delete the two <code>#define FOR_EACH_*</code> blocks. Build. <code>grep -rn FOR_EACH src</code> must be empty.</li>
+<li><strong>Then test by playing</strong> — this is the trap step. If enemies freeze or bullets don't move, you copied instead of referenced. Find the missing <code>&amp;</code>.</li>
+<li>(Optional) Convert the two arrays to <code>std::array</code> and rebuild.</li>
+</ol>
+
+<blockquote><strong>Watch the early-exit loops.</strong> <code>UpdateEnemies</code> uses <code>break</code>
+to bail after finding an edge hit — range-for supports <code>break</code>/<code>continue</code>
+identically, so those translate one-to-one. No logic change needed.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="1">
+  <div class="q">In <code>for (Enemy e : state-&gt;enemies)</code>, why do edits to <code>e</code> vanish?</div>
+  <button data-fb="No — range-for visits every element; the count is fine.">It skips inactive enemies automatically</button>
+  <button data-fb="Right — without &, each element is copied into e; the copy is discarded each pass.">e is a copy of each element, not the element</button>
+  <button data-fb="No — std::array indexing is unrelated to this; the missing & is the cause.">std::array forbids writes inside a loop</button>
+  <button data-fb="No — const was never added; the issue is copy vs reference.">The loop variable is implicitly const</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">What does <code>std::array</code> give you that a C array does not?</div>
+  <button data-fb="Exactly — it keeps its size and refuses to decay to a bare pointer when passed.">It remembers its size when passed to functions</button>
+  <button data-fb="No — both are fixed-size; std::array does not grow. That's std::vector.">It can grow at runtime as needed</button>
+  <button data-fb="No — std::array has zero overhead vs a C array; no heap involved.">It stores its elements on the heap</button>
+  <button data-fb="No — bounds aren't checked by operator[]; .at() checks, C array never does.">operator[] always bounds-checks every access</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://en.cppreference.com/w/cpp/language/range-for">cppreference — range-based for loop</a>.
+Scan the "Explanation" table: it shows exactly what <code>for (T&amp; x : range)</code> expands to, which
+makes the copy-vs-reference distinction click. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Want to know why <code>const Enemy&amp;</code> is the right choice for
+the read-only <em>draw</em> loops (vs plain <code>Enemy&amp;</code>)? That's a real distinction worth a
+question — it previews const-correctness, which matters once these become class methods in lesson 4.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0002-constexpr-constants.html">Lesson 02: constexpr</a></span>
+  <span>Next up: <strong>entity classes</strong> — Player/Enemy/Projectile own update + draw →</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 03 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
