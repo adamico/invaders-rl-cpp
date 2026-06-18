@@ -6,26 +6,17 @@
 #include "game.h"
 #include "scene_gameplay.h"
 
-#define CANVAS_SIZE 50
-
-#define CANVAS_OFFSET (Vector2){-CANVAS_SIZE / 2.0, -CANVAS_SIZE / 2.0}
-
-#define PLAYER_RADIUS 12.5f
-#define PLAYER_SPEED 300.0f
-#define PLAYER_HEALTH 5
-#define INITIAL_PLAYER_POS                                                     \
-  (Vector2) { windowSize.x / 2, windowSize.y - (PLAYER_RADIUS * 4) }
-
-#define MAX_ENEMIES_PER_ROW 11
-#define COL_PADDING 80
-#define ROW_PADDING 60
-#define ENEMY_SPEED 50.0f
-#define ENEMY_RADIUS 15.0f
-#define ENEMY_SCORE_VALUE 100
-#define START_GRID_POS                                                         \
-  (Vector2){((windowSize.x - (MAX_ENEMIES_PER_ROW * COL_PADDING)) / 2) +       \
-                (COL_PADDING / 2.0f),                                          \
-            100}
+constexpr int CANVAS_SIZE = 50;
+constexpr Vector2 CANVAS_OFFSET = {-CANVAS_SIZE / 2.0f, -CANVAS_SIZE / 2.0f};
+constexpr float PLAYER_RADIUS = 12.5f;
+constexpr float PLAYER_SPEED = 300.0f;
+constexpr int PLAYER_HEALTH = 5;
+constexpr int MAX_ENEMIES_PER_ROW = 11;
+constexpr int COL_PADDING = 80;
+constexpr int ROW_PADDING = 60;
+constexpr float ENEMY_SPEED = 50.0f;
+constexpr float ENEMY_RADIUS = 15.0f;
+constexpr int ENEMY_SCORE_VALUE = 100;
 
 #define FOR_EACH_PROJECTILE(projectilePtr, projectileArray)                    \
   for (Projectile* projectilePtr = projectileArray;                            \
@@ -36,7 +27,9 @@
        enemyPtr++)
 
 void InitPlayer(GameState* state) {
-  state->player = (Player){.pos = INITIAL_PLAYER_POS,
+  Vector2 startPos = {GetScreenWidth() / 2.0f,
+                      GetScreenHeight() - (PLAYER_RADIUS * 4)};
+  state->player = (Player){.pos = startPos,
                            .radius = PLAYER_RADIUS,
                            .speed = PLAYER_SPEED,
                            .dir = {0.0f, 0.0f},
@@ -44,11 +37,15 @@ void InitPlayer(GameState* state) {
 }
 
 void InitEnemies(GameState* state) {
+  Vector2 startGridPos = {
+      ((GetScreenWidth() - (MAX_ENEMIES_PER_ROW * COL_PADDING)) / 2.0f) +
+          (COL_PADDING / 2.0f),
+      100};
   for (int enemyIndex = 0; enemyIndex < MAX_ENEMIES; enemyIndex++) {
     int column = enemyIndex % MAX_ENEMIES_PER_ROW;
     int row = enemyIndex / MAX_ENEMIES_PER_ROW;
-    float offsetX = START_GRID_POS.x;
-    float offsetY = START_GRID_POS.y;
+    float offsetX = startGridPos.x;
+    float offsetY = startGridPos.y;
     Enemy enemy = {.pos = (Vector2){offsetX + (column * COL_PADDING),
                                     offsetY + (row * ROW_PADDING)},
                    .radius = ENEMY_RADIUS,
@@ -148,7 +145,7 @@ void DrawProjectiles(GameState* state) {
 
 void UpdateEnemies(GameState* state, float dt) {
   Vector2 direction = state->enemyDirection;
-  int speed = state->enemySpeed;
+  float speed = state->enemySpeed;
   bool needToMoveDown = false;
   int rightEdge = windowSize.x - ENEMY_RADIUS;
   int leftEdge = ENEMY_RADIUS;

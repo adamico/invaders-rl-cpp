@@ -5,8 +5,8 @@
 #include "scene_title.h"
 #include <stdio.h>
 
-const Vector2 windowSize = {1280, 720};
-const char *gameName = "Invaders RL";
+constexpr Vector2 windowSize = {1280, 720};
+constexpr char gameName[] = "Invaders RL";
 
 GameResources::GameResources() {
   playerTexture = LoadTexture("player.png");
