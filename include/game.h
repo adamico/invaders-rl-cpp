@@ -36,13 +36,19 @@ typedef struct Enemy {
   int scoreValue;
 } Enemy;
 
-typedef struct GameResources {
+struct GameResources {
   Texture2D playerTexture;
   Texture2D enemyTexture;
   Texture2D laserTexture;
   Sound laserSound;
   Sound explosionSound;
-} GameResources;
+
+  GameResources();
+  ~GameResources();
+
+  GameResources(const GameResources &) = delete;
+  GameResources &operator=(const GameResources &) = delete;
+};
 
 typedef struct GameState {
   Player player;
@@ -56,9 +62,6 @@ typedef struct GameState {
   GameResources resources;
   int score;
 } GameState;
-
-void LoadGameResources(GameResources *resources);
-void UnloadGameResources(GameResources *resources);
 
 void CenterText(const char *text, int yPos, int fontSize, Color textColor);
 void InitGameplay(GameState *state);

@@ -24,7 +24,7 @@
 #define ENEMY_SCORE_VALUE 100
 #define START_GRID_POS                                                         \
   (Vector2){((windowSize.x - (MAX_ENEMIES_PER_ROW * COL_PADDING)) / 2) +       \
-                (COL_PADDING / 2.0f),                                           \
+                (COL_PADDING / 2.0f),                                          \
             100}
 
 #define FOR_EACH_PROJECTILE(projectilePtr, projectileArray)                    \
@@ -61,14 +61,19 @@ void InitEnemies(GameState *state) {
   }
 }
 
-void InitGameplay(GameState *state) {
-  GameResources resBackup = state->resources;
-  *state = (GameState){};
-  state->resources = resBackup;
+void InitBullets(GameState *state) {
+  for (int bulletIndex = 0; bulletIndex < MAX_PROJECTILES; bulletIndex++) {
+    state->bullets[bulletIndex] = {.active = false};
+  }
+}
 
+void InitGameplay(GameState *state) {
+  state->score = 0;
   state->victory = false;
+  state->activeEnemies = 0;
   InitPlayer(state);
   InitEnemies(state);
+  InitBullets(state);
 }
 
 void UpdatePlayer(GameState *state, float dt) {

@@ -8,20 +8,20 @@
 const Vector2 windowSize = {1280, 720};
 const char *gameName = "Invaders RL";
 
-void LoadGameResources(GameResources *resources) {
-  resources->playerTexture = LoadTexture("player.png");
-  resources->enemyTexture = LoadTexture("enemy.png");
-  resources->laserTexture = LoadTexture("laser.png");
-  resources->laserSound = LoadSound("laser.wav");
-  resources->explosionSound = LoadSound("explosion.wav");
+GameResources::GameResources() {
+  playerTexture = LoadTexture("player.png");
+  enemyTexture = LoadTexture("enemy.png");
+  laserTexture = LoadTexture("laser.png");
+  laserSound = LoadSound("laser.wav");
+  explosionSound = LoadSound("explosion.wav");
 }
 
-void UnloadGameResources(GameResources *resources) {
-  UnloadTexture(resources->playerTexture);
-  UnloadTexture(resources->enemyTexture);
-  UnloadTexture(resources->laserTexture);
-  UnloadSound(resources->laserSound);
-  UnloadSound(resources->explosionSound);
+GameResources::~GameResources() {
+  UnloadTexture(playerTexture);
+  UnloadTexture(enemyTexture);
+  UnloadTexture(laserTexture);
+  UnloadSound(laserSound);
+  UnloadSound(explosionSound);
 }
 
 // Main function
@@ -40,7 +40,6 @@ int main() {
 
   GameState state = {};
 
-  LoadGameResources(&state.resources);
   InitGameplay(&state);
 
   state.currentScene = TITLE;
@@ -62,7 +61,6 @@ int main() {
     }
   }
 
-  UnloadGameResources(&state.resources);
   CloseAudioDevice();
   CloseWindow();
   return 0;
