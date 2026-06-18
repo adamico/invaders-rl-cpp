@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 14 · A pool, for any element</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 14 · Refactor · Class templates</span>
+<h1>One pool, any element</h1>
+<p class="subtitle">Last lesson templated a <em>function</em>. Now template a <em>class</em>. <code>Swarm</code> and <code>ProjectilePool</code> both wrap a fixed array of flag-activated things and both hunt for free slots by hand. Extract that shared machinery into <code>Pool&lt;T, N&gt;</code> — and watch a stored invariant disappear entirely.</p>
+
+<h2>What the two share — and what they don't</h2>
+<p>Be precise before extracting. <code>Swarm</code> and <code>ProjectilePool</code> have in common only:
+a <code>std::array&lt;T, N&gt;</code>, "find the first inactive slot," and "how many are active." Their
+<em>behaviour</em> — the swarm's edge-bounce/descend, the pool's <code>fire</code> — is bespoke and stays
+put. So this isn't inheritance; it's <strong>composition</strong>: each class will <em>contain</em> a
+<code>Pool</code> and keep its own logic on top. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-member">Core Guidelines C.129/ C.8: prefer composition; templates for shared mechanism</a>]</span></p>
+
+<h2>The class template</h2>
+<pre><span class="cm">// NEW FILE: include/pool.h</span>
+#pragma once
+#include &lt;array&gt;
+#include &lt;cstddef&gt;
+
+<span class="add">template &lt;typename T, std::size_t N&gt;</span>
+<span class="add">struct Pool {</span>
+  std::array&lt;T, N&gt; items{};
+
+  <span class="add">T* acquire() {                 // first inactive slot, or nullptr if full</span>
+    for (T&amp; item : items)
+      if (!item.active) return &amp;item;
+    return nullptr;
+  }
+
+  <span class="add">int active_count() const {     // DERIVED — never stored, so it can never drift</span>
+    int n = 0;
+    for (const T&amp; item : items)
+      if (item.active) ++n;
+    return n;
+  }
+};</pre>
+<p>Two template parameters of different kinds: <code>typename T</code> (a <em>type</em> — what's pooled)
+and <code>std::size_t N</code> (a <strong>non-type</strong> template parameter — an actual compile-time
+number, the array size). <code>Pool&lt;Enemy, 55&gt;</code> and <code>Pool&lt;Projectile, 100&gt;</code>
+are two distinct classes the compiler generates from one definition. Like last lesson, it's duck-typed:
+any <code>T</code> with an <code>active</code> member works; nothing else is required. And like last
+lesson — <strong>the whole template lives in the header</strong>, no <code>pool.cpp</code>.</p>
+
+<div class="why">
+<h3>The payoff: a derived count beats a maintained one (sequel to lesson 12)</h3>
+<p>Lesson 12 taught you to maintain <code>activeCount</code> safely by funnelling all changes through
+<code>Swarm::deactivate</code> — keeping a stored value and its invariant in sync. The deeper move is to
+ask: <em>why store it at all?</em> <code>active_count()</code> computes it on demand by counting active
+flags. There is no stored field, so there is <strong>no invariant to keep</strong> — it is impossible for
+the count to be wrong. (Counting 55 flags per frame is free here.) The safest state is state you don't
+duplicate. <code>Swarm</code> can now delete its <code>int activeCount</code> field entirely.</p>
+</div>
+
+<h2>Swarm: compose the pool, drop the stored count</h2>
+<pre><span class="cm">// swarm.h — before → after</span>
+struct Swarm {
+  <span class="del">std::array&lt;Enemy, MAX_ENEMIES&gt; enemies{};</span>
+  <span class="del">int activeCount{};</span>
+  <span class="add">Pool&lt;Enemy, MAX_ENEMIES&gt; pool;</span>
+  Vector2 direction{};
+  int speed{};
+
+  void reset();
+  bool update(float deltaTime);
+  void draw(const Texture2D&amp; texture) const;
+  void deactivate(Enemy&amp; enemy);
+  <span class="add">int activeCount() const { return pool.active_count(); }   // now a method, not a field</span>
+};</pre>
+<p>Add <code>#include "pool.h"</code> to <code>swarm.h</code>. Then in <code>swarm.cpp</code>, every bare
+<code>enemies</code> becomes <code>pool.items</code>, and the count bookkeeping vanishes:</p>
+<pre><span class="cm">// swarm.cpp — reset(): drop the two activeCount lines, loop pool.items</span>
+void Swarm::reset() {
+  direction = {1.0f, 0.0f};
+  speed = ENEMY_SPEED;
+  Vector2 start = { ... };
+  for (int i = 0; i &lt; MAX_ENEMIES; i++) {
+    int col = i % MAX_ENEMIES_PER_ROW, row = i / MAX_ENEMIES_PER_ROW;
+    <span class="add">pool.items[i]</span> = { .pos = {...}, .radius = ENEMY_RADIUS,
+                     .scoreValue = ENEMY_SCORE_VALUE, .active = true };
+    <span class="del">// activeCount++  ← gone</span>
+  }
+}
+
+<span class="cm">// update() / draw(): for (Enemy&amp; e : pool.items)  — same loops, new source</span>
+
+void Swarm::deactivate(Enemy&amp; enemy) {
+  <span class="add">enemy.active = false;     // no count to maintain now — the guard/-- are gone</span>
+}</pre>
+<blockquote><strong>Tell-Don't-Ask still holds.</strong> Keep <code>Swarm::deactivate(Enemy&amp;)</code> as the
+verb collision code calls — its body just got trivial. The <em>reason</em> it existed (protect the count)
+is gone, but the <em>interface</em> staying put means the collision call sites don't change at all.</blockquote>
+
+<h2>ProjectilePool: compose, and let <code>acquire</code> simplify <code>fire</code></h2>
+<pre><span class="cm">// projectile_pool.h</span>
+struct ProjectilePool {
+  <span class="del">std::array&lt;Projectile, MAX_PROJECTILES&gt; projectiles{};</span>
+  <span class="add">Pool&lt;Projectile, MAX_PROJECTILES&gt; pool;</span>
+  void reset();
+  void update(float deltaTime);
+  void draw(const Texture2D&amp; texture) const;
+  bool fire(Vector2 from, Vector2 dir = {0.0f, -1.0f});
+};</pre>
+<pre><span class="cm">// projectile_pool.cpp — fire() collapses onto acquire() + the existing Projectile::spawn</span>
+bool ProjectilePool::fire(Vector2 from, Vector2 dir) {
+  <span class="add">Projectile* p = pool.acquire();</span>
+  if (!p) return false;            <span class="cm">// pool full — nothing fired</span>
+  <span class="add">p-&gt;spawn(from, dir);</span>             <span class="cm">// spawn already sets pos/dir/speed/radius/active (lesson 5)</span>
+  return true;
+}
+<span class="cm">// reset/update/draw: loop pool.items instead of projectiles</span></pre>
+
+<h2>Rewire the call sites (only three reach inside)</h2>
+<pre><span class="cm">// scene_gameplay.cpp</span>
+for (Projectile&amp; bullet : <span class="add">state.projectilePool.pool.items</span>) { ... }   <span class="cm">// was .projectiles</span>
+for (Enemy&amp; enemy : <span class="add">state.swarm.pool.items</span>) { ... }              <span class="cm">// was .enemies (×2)</span>
+if (<span class="add">state.swarm.activeCount() &lt;= 0</span>) state.victory = true;          <span class="cm">// was .activeCount (now a call)</span></pre>
+<p>Everything else — <code>reset()</code>, <code>fire()</code>, <code>update()</code>, <code>draw()</code>,
+<code>deactivate()</code> — is unchanged, because those are the classes' public surface and it didn't move.
+Good encapsulation is what keeps this refactor small.</p>
+
+<div class="why">
+<h3>Reaching <code>state.swarm.pool.items</code> is two dots deep — note it</h3>
+<p>That's a mild Law-of-Demeter poke (the collision loop reaches through <code>swarm</code> into its
+<code>pool</code>'s <code>items</code>). It's acceptable for now, but it's the thread the <em>next</em>
+lesson pulls: a generic <code>each_active(fn)</code> on <code>Pool</code> that takes a callable (a lambda),
+so callers say <code>swarm.pool.each_active([&amp;](Enemy&amp; e){ ... })</code> and the bare
+<code>if (!active) continue;</code> loops disappear for good. That's lambdas — a new mechanic — so it gets
+its own lesson.</p>
+</div>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/pool.h</code> <strong>(new)</strong> — the <code>Pool&lt;T, N&gt;</code> template, header-only.</li>
+<li><code>include/swarm.h</code> — <code>#include "pool.h"</code>; swap <code>enemies</code>+<code>activeCount</code> field for <code>Pool&lt;Enemy, MAX_ENEMIES&gt; pool;</code>; add <code>int activeCount() const</code> method.</li>
+<li><code>src/swarm.cpp</code> — <code>enemies</code> → <code>pool.items</code> throughout; delete <code>activeCount = 0 / ++ / --</code>; <code>deactivate</code> becomes one line.</li>
+<li><code>include/projectile_pool.h</code> + <code>src/projectile_pool.cpp</code> — same swap; <code>fire</code> uses <code>pool.acquire()</code> + <code>spawn</code>.</li>
+<li><code>src/scene_gameplay.cpp</code> — the three reach-in sites above (<code>.pool.items</code> ×3, <code>.activeCount()</code> ×1).</li>
+<li>No Makefile change. Build &amp; play full cycle: shooting caps at the pool size, victory fires once when the swarm clears, breach + collision still kill.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) <code>activeCount</code> is now a <em>method</em> — the victory line
+needs <code>()</code>; the compiler will catch a missed one. (2) Don't write <code>pool.cpp</code> —
+header-only template (linker error otherwise, same as lesson 13). (3) If <code>fire</code> previously set
+speed/radius inline, make sure <code>Projectile::spawn</code> still sets them so the switch to
+<code>p-&gt;spawn()</code> doesn't drop fields. (4) Grep for any leftover bare <code>enemies</code> /
+<code>projectiles</code> / <code>activeCount</code> (field form).</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="1">
+  <div class="q">What is the <code>N</code> in <code>Pool&lt;T, N&gt;</code>?</div>
+  <button data-fb="No — N is a value, not a type; T is the type parameter.">A second type the pool stores alongside T</button>
+  <button data-fb="Right — a non-type template parameter: a compile-time constant, the array's size.">A non-type template parameter — a compile-time size</button>
+  <button data-fb="No — it's fixed at compile time per instantiation, not runtime-variable.">A runtime variable for the current element count</button>
+  <button data-fb="No — there's no inheritance here; it's composition.">The base class the pool inherits from</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why is a derived <code>active_count()</code> safer than a stored <code>activeCount</code> field?</div>
+  <button data-fb="No — computing it is slightly more work, not less; safety is the point.">Because counting is faster than reading a field</button>
+  <button data-fb="No — templates don't forbid fields; this is a design choice.">Because templates can't contain data members</button>
+  <button data-fb="Right — nothing is stored, so there's no invariant that can fall out of sync.">There's no stored value to drift out of sync with reality</button>
+  <button data-fb="No — both are encapsulated; that's not the difference.">Because a method is private and a field is public</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why compose a <code>Pool</code> member instead of making <code>Swarm</code> inherit from it?</div>
+  <button data-fb="Exactly — the swarm adds bespoke behaviour and just needs the storage mechanism, not an is-a relationship.">Swarm uses the pool's mechanism but isn't a kind of pool</button>
+  <button data-fb="No — templates support inheritance fine; that's not the reason.">You cannot inherit from a class template</button>
+  <button data-fb="No — virtual dispatch isn't involved or needed here.">Inheritance would add a vtable the pool needs</button>
+  <button data-fb="No — both compile; the choice is about the is-a vs has-a relationship.">Composition is the only form that compiles</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://en.cppreference.com/w/cpp/language/class_template">cppreference — class templates</a>
+and <a href="https://en.cppreference.com/w/cpp/language/template_parameters">non-type template parameters</a>;
+<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rt-fct">Core Guidelines T.5/T.10</a> on generic programming. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: should <code>Pool::items</code> be private with an
+<code>each_active</code> accessor (the lambda lesson)? Does <code>Pool&lt;Enemy,55&gt;</code> and
+<code>Pool&lt;Projectile,100&gt;</code> generating two full copies cause binary bloat, and when does that
+matter? Could <code>N</code> default (<code>std::size_t N = 64</code>), and would you want it to?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0013-function-templates.html">Lesson 13: function templates</a></span>
+  <span>Class templates done. Next: <code>each_active(lambda)</code> — kill the last active-loop duplication.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 14 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

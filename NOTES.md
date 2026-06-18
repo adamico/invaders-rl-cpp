@@ -53,9 +53,13 @@
     runtime virtual dispatch. Key gotcha taught: template defs MUST live in headers (else linker
     undefined-ref). Addressed deferred smells honestly: detect/effect split = overengineering for
     immediate-mode (skip, maybe just rename); if(!active)continue dup -> next arc = class template.
+14. [DONE L0014] Class template Pool<T,N> (typename + non-type param), composed into Swarm+
+    ProjectilePool. Derived activeCount() -> stored field deleted (sequel-to-L12 payoff). fire() ->
+    acquire()+spawn. Header-only. Applied one pass, working. User renamed method to camelCase
+    activeCount(). See LR-0015. Templates gap now substantively covered (L13 fn + L14 class).
 Possible future arcs (confirm with user before starting a new mission):
-- Class template Pool<T> unifying Swarm+ProjectilePool (+ active-iteration helper); C++20 concepts to
-  name the Collidable requirement; make swarm/pool members private; per-scene state / pause overlay.
+- each_active(lambda) helper on Pool (NEW: lambdas) -> kills if(!active)continue dup + the .pool.items
+  reach; make Pool::items private; C++20 concepts (name Collidable); per-scene state / pause overlay.
 - Per-scene state as class members (pause menu, settings, level-complete).
 - Revisit the repo's original RL-environment goal (currently out of scope in MISSION.md).
 
