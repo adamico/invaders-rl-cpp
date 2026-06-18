@@ -11,5 +11,5 @@ struct GameState {
   int score;
 };
 
-void CenterText(const char* text, int yPos, int fontSize, Color textColor);
-void InitGameplay(GameState* state);
+void centerText(const char* text, int yPos, int fontSize, Color textColor);
+void initGameplay(GameState* state);

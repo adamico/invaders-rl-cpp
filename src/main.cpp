@@ -40,7 +40,7 @@ int main() {
   InitAudioDevice();
 
   GameState state = {};
-  InitGameplay(&state);
+  initGameplay(&state);
 
   SceneManager scenes(std::make_unique<SceneTitle>());
 

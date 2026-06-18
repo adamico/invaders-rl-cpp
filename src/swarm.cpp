@@ -9,10 +9,8 @@ constexpr int ENEMY_SCORE_VALUE = 100;
 constexpr float ENEMY_VERTICAL_MOVEMENT = ROW_PADDING / 2.0f;
 
 void Swarm::reset() {
-  activeCount = 0;
   direction = {1.0f, 0.0f};
   speed = ENEMY_SPEED;
-
   Vector2 startGridPos = {
       ((GetScreenWidth() - (MAX_ENEMIES_PER_ROW * COL_PADDING)) / 2.0f) +
           (COL_PADDING / 2.0f),
@@ -23,13 +21,12 @@ void Swarm::reset() {
     int row = enemyIndex / MAX_ENEMIES_PER_ROW;
     float offsetX = startGridPos.x;
     float offsetY = startGridPos.y;
-    enemies[enemyIndex] = {
+    pool.items[enemyIndex] = {
         .pos = {offsetX + (col * COL_PADDING), offsetY + (row * ROW_PADDING)},
         .radius = ENEMY_RADIUS,
         .scoreValue = ENEMY_SCORE_VALUE,
         .active = true,
     };
-    activeCount++;
   }
 }
 
@@ -38,7 +35,7 @@ bool Swarm::update(float deltaTime) {
   bool breached = false;
   int rightEdge = GetScreenWidth() - ENEMY_RADIUS;
   int leftEdge = ENEMY_RADIUS;
-  for (Enemy& enemy : enemies) {
+  for (Enemy& enemy : pool.items) {
     if (!enemy.active) continue;
 
     bool willHitRightEdge =
@@ -53,7 +50,7 @@ bool Swarm::update(float deltaTime) {
   }
 
   if (needToMoveDown) {
-    for (Enemy& enemy : enemies) {
+    for (Enemy& enemy : pool.items) {
       enemy.moveVertically(ENEMY_VERTICAL_MOVEMENT);
       if (enemy.pos.y > GetScreenHeight()) {
         breached = true;
@@ -62,7 +59,7 @@ bool Swarm::update(float deltaTime) {
     }
   }
 
-  for (Enemy& enemy : enemies) {
+  for (Enemy& enemy : pool.items) {
     if (!enemy.active) continue;
 
     enemy.moveHorizontally(direction, speed, deltaTime);
@@ -72,14 +69,9 @@ bool Swarm::update(float deltaTime) {
 }
 
 void Swarm::draw(const Texture2D& texture) const {
-  for (const Enemy& enemy : enemies) {
+  for (const Enemy& enemy : pool.items) {
     enemy.draw(texture);
   }
 }
 
-void Swarm::deactivate(Enemy& enemy) {
-  if (!enemy.active) return;
-
-  enemy.active = false;
-  activeCount--;
-}
+void Swarm::deactivate(Enemy& enemy) { enemy.active = false; }

@@ -16,7 +16,10 @@ constexpr float PLAYER_RADIUS = 12.5f;
 constexpr float PLAYER_SPEED = 300.0f;
 constexpr int PLAYER_HEALTH = 5;
 
-void InitPlayer(GameState* state) {
+constexpr float PROJECTILE_SPEED = 500.0f;
+constexpr float PROJECTILE_RADIUS = 5.0f;
+
+void initPlayer(GameState* state) {
   Vector2 startPos = {GetScreenWidth() / 2.0f,
                       GetScreenHeight() - (PLAYER_RADIUS * 4)};
   state->player = (Player){.pos = startPos,
@@ -26,10 +29,10 @@ void InitPlayer(GameState* state) {
                            .health = PLAYER_HEALTH};
 }
 
-void InitGameplay(GameState* state) {
+void initGameplay(GameState* state) {
   state->score = 0;
   state->victory = false;
-  InitPlayer(state);
+  initPlayer(state);
   state->swarm.reset();
   state->projectilePool.reset();
 }
@@ -49,21 +52,29 @@ void Player::update(float dt) {
       (Vector2){GetScreenWidth() - radius, GetScreenHeight() - radius});
 };
 
-void DrawOffset(Texture2D texture, Vector2 pos, Color tint) {
+void drawOffset(Texture2D texture, Vector2 pos, Color tint) {
   Vector2 drawPos = Vector2Add(pos, CANVAS_OFFSET);
   DrawTextureV(texture, drawPos, tint);
 }
 
 void Player::draw(const Texture2D& texture) const {
-  DrawOffset(texture, pos, WHITE);
+  drawOffset(texture, pos, WHITE);
   DrawCircleLinesV(pos, radius, RED);
 };
 
-void PlayerShoot(GameState& state) {
+void playerShoot(GameState& state) {
   if (!IsKeyPressed(KEY_SPACE)) return;
 
   if (state.projectilePool.fire(state.player.pos, {0.0f, -1.0f}))
     PlaySound(state.resources.laserSound);
+}
+
+void Projectile::spawn(Vector2 from, Vector2 dir) {
+  pos = from;
+  this->dir = dir;
+  speed = PROJECTILE_SPEED;
+  radius = PROJECTILE_RADIUS;
+  active = true;
 }
 
 void Projectile::update(float dt) {
@@ -74,7 +85,7 @@ void Projectile::update(float dt) {
 
 void Projectile::draw(const Texture2D& texture) const {
   if (!active) return;
-  DrawOffset(texture, pos, WHITE);
+  drawOffset(texture, pos, WHITE);
   DrawCircleLinesV(pos, radius, RED);
 }
 
@@ -86,15 +97,15 @@ void Enemy::moveVertically(float amount) { pos.y += amount; }
 
 void Enemy::draw(const Texture2D& texture) const {
   if (!active) return;
-  DrawOffset(texture, pos, WHITE);
+  drawOffset(texture, pos, WHITE);
   DrawCircleLinesV(pos, radius, RED);
 }
 
-void DetectBulletEnemyCollisions(GameState& state) {
-  for (Projectile& bullet : state.projectilePool.projectiles) {
+void detectBulletEnemyCollisions(GameState& state) {
+  for (Projectile& bullet : state.projectilePool.pool.items) {
     if (!bullet.active) continue;
 
-    for (Enemy& enemy : state.swarm.enemies) {
+    for (Enemy& enemy : state.swarm.pool.items) {
       if (!enemy.active) continue;
 
       if (overlaps(bullet, enemy)) {
@@ -107,8 +118,8 @@ void DetectBulletEnemyCollisions(GameState& state) {
   }
 }
 
-void DetectPlayerEnemyCollisions(GameState& state) {
-  for (Enemy& enemy : state.swarm.enemies) {
+void detectPlayerEnemyCollisions(GameState& state) {
+  for (Enemy& enemy : state.swarm.pool.items) {
     if (!enemy.active) continue;
 
     if (overlaps(state.player, enemy)) {
@@ -121,12 +132,12 @@ void DetectPlayerEnemyCollisions(GameState& state) {
 std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
   if (state.swarm.update(dt)) state.player.health = 0;
   state.player.update(dt);
-  PlayerShoot(state);
+  playerShoot(state);
   state.projectilePool.update(dt);
-  DetectBulletEnemyCollisions(state);
-  DetectPlayerEnemyCollisions(state);
+  detectBulletEnemyCollisions(state);
+  detectPlayerEnemyCollisions(state);
 
-  if (state.swarm.activeCount <= 0) state.victory = true;
+  if (state.swarm.activeCount() <= 0) state.victory = true;
   if (state.victory || state.player.health <= 0)
     return std::make_unique<SceneGameover>();
 
