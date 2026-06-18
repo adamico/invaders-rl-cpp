@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 11 · Extracting the HUD</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 11 · Refactor · When NOT to make a class</span>
+<h1>The HUD is a responsibility, not an object</h1>
+<p class="subtitle">You've extracted two classes in a row. The reflex now is "HUD → make a HudClass." Resist it. The HUD owns no data — it's pure rendering. The skill this lesson builds is recognising when a responsibility wants a <em>function</em>, not a <em>class</em>.</p>
+
+<h2>The smell, and the trap</h2>
+<p><code>SceneGameplay::draw</code> mixes three different jobs:</p>
+<pre>void SceneGameplay::draw(const GameState&amp; state) const {
+  <span class="cm">// (1) frame lifecycle</span>
+  BeginDrawing();
+  ClearBackground(BLACK);
+  <span class="cm">// (2) world rendering</span>
+  state.player.draw(state.resources.playerTexture);
+  state.swarm.draw(state.resources.enemyTexture);
+  state.projectilePool.draw(state.resources.laserTexture);
+  <span class="cm">// (3) HUD / overlay — the bit to extract</span>
+  DrawText(TextFormat("Health: %i", state.player.health), 20, GetScreenHeight()-40, 20, WHITE);
+  DrawText(TextFormat("Score: %i", state.score), 20, 20, 20, WHITE);
+  EndDrawing();
+}</pre>
+<p>The HUD lines are a separate concern (UI overlay) buried in the scene's draw. Extract them — but here's
+the trap: <code>Swarm</code> and <code>ProjectilePool</code> earned classes because they <strong>owned
+mutable data</strong> (arrays, counters, an invariant to protect). The HUD owns <em>nothing</em>. It reads
+two numbers and draws text. Wrapping it in a class would invent a stateless object whose only method takes
+all its inputs as arguments — a class pretending to be a function. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-org">Core Guidelines C.4: make a function a member only if it needs direct access to the representation of a class</a>]</span></p>
+
+<div class="why">
+<h3>The test: does it have state to protect?</h3>
+<p>A class is justified when there's <strong>data + invariants</strong> to keep consistent (the pool's
+active flags, the swarm's direction/count). If a thing is "take some inputs, produce some output/side-effect,
+keep nothing," it's a <strong>free function</strong>. The HUD keeps nothing between frames. So: free
+function. This is the <em>same</em> C.4 rule you used to keep collisions free in lessons 9–10 — now applied
+to decide a class shouldn't exist at all. SRP means "one job per unit," not "everything is an object."</p>
+</div>
+
+<h2>Extract it — and decouple while you're there</h2>
+<p>Two ways to pass the data in:</p>
+<pre><span class="cm">// Option 1 — pass the whole state (convenient, but couples HUD to GameState)</span>
+void drawHud(const GameState&amp; state);
+
+<span class="cm">// Option 2 — pass only what it draws (HUD knows nothing about GameState)  ← prefer</span>
+<span class="add">void drawHud(int score, int health);</span></pre>
+<p>Prefer option 2. The HUD's job is "render these numbers on screen" — it shouldn't need to know a
+<code>GameState</code> type exists. Passing primitives means the HUD has <strong>zero dependencies</strong>
+on the rest of the game: you could reuse it, test it, or call it from a different scene with made-up values.
+That's looser coupling for free. (If the HUD later grows to a dozen fields, revisit — at that point a small
+<code>HudData</code> struct or <code>const GameState&amp;</code> may read better. For two ints, primitives
+win.) <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-narrow">Core Guidelines I.5/F.2: a function should take only what it needs</a>]</span></p>
+
+<pre><span class="cm">// NEW FILE: include/hud.h</span>
+#pragma once
+void drawHud(int score, int health);</pre>
+<pre><span class="cm">// NEW FILE: src/hud.cpp</span>
+#include "hud.h"
+#include "raylib.h"
+
+constexpr int HUD_FONT_SIZE = 20;
+constexpr int HUD_MARGIN = 20;
+
+void drawHud(int score, int health) {
+  DrawText(TextFormat("Score: %i", score), HUD_MARGIN, HUD_MARGIN, HUD_FONT_SIZE, WHITE);
+  DrawText(TextFormat("Health: %i", health), HUD_MARGIN,
+           GetScreenHeight() - 2 * HUD_MARGIN, HUD_FONT_SIZE, WHITE);
+}</pre>
+<p>Notice <code>hud.h</code> includes <em>nothing</em> game-specific — not even <code>game_state.h</code>.
+That's the payoff of option 2.</p>
+
+<div class="why">
+<h3>Where the boundary falls: HUD draws, the scene owns the frame</h3>
+<p><code>drawHud</code> does <strong>not</strong> call <code>BeginDrawing</code>/<code>EndDrawing</code> or
+<code>ClearBackground</code>. Those bracket the <em>entire</em> frame and define draw order — that's the
+scene's lifecycle responsibility, not the HUD's. The HUD only emits its text into the already-open frame.
+Getting this boundary right is the actual lesson: an extracted unit should own its slice and nothing of its
+caller's job. If <code>drawHud</code> called <code>BeginDrawing</code>, you couldn't compose it with the
+world rendering in one frame.</p>
+</div>
+
+<h2>Rewire the scene</h2>
+<pre><span class="cm">// scene_gameplay.cpp — add #include "hud.h"</span>
+void SceneGameplay::draw(const GameState&amp; state) const {
+  BeginDrawing();
+  ClearBackground(BLACK);
+
+  state.player.draw(state.resources.playerTexture);
+  state.swarm.draw(state.resources.enemyTexture);
+  state.projectilePool.draw(state.resources.laserTexture);
+
+  <span class="add">drawHud(state.score, state.player.health);   // was the two DrawText lines + font_size</span>
+  EndDrawing();
+}</pre>
+<p>The scene's draw now reads as exactly its three jobs: open frame → render world → render overlay → close
+frame. Each line is one responsibility.</p>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/hud.h</code> <strong>(new)</strong> — just <code>void drawHud(int score, int health);</code>, no game includes.</li>
+<li><code>src/hud.cpp</code> <strong>(new)</strong> — the two <code>DrawText</code> calls + HUD layout constants.</li>
+<li><code>src/scene_gameplay.cpp</code> — <code>#include "hud.h"</code>; replace the two <code>DrawText</code> lines (and the local <code>font_size</code>) with one <code>drawHud(...)</code> call.</li>
+<li>No Makefile change — <code>src/*.cpp</code> globbed.</li>
+<li>Build &amp; play: score + health still render in the same spots; numbers update as you score / take damage.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) Don't drag <code>BeginDrawing</code>/<code>EndDrawing</code> into
+<code>drawHud</code> — leave frame lifecycle in the scene. (2) Don't <code>#include "game_state.h"</code>
+in <code>hud.h</code> — if you feel the urge, you've slipped back to option 1. (3) The old local
+<code>int font_size</code> is now a constant in <code>hud.cpp</code>; remove the stray one from the scene.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why is the HUD a free function and not a class?</div>
+  <button data-fb="No — free functions aren't generally faster; that's not the reason.">Free functions render text faster than methods</button>
+  <button data-fb="No — it can read state via arguments; the point is it stores none.">A class cannot access the player's health</button>
+  <button data-fb="Right — it owns no data and protects no invariant, so there's nothing for a class to encapsulate.">It holds no state and protects no invariant</button>
+  <button data-fb="No — SRP doesn't ban classes; it asks for one job per unit.">SRP forbids using classes for rendering</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why prefer <code>drawHud(int, int)</code> over <code>drawHud(const GameState&amp;)</code>?</div>
+  <button data-fb="Exactly — primitives give the HUD zero dependency on GameState: reusable and testable.">The HUD then depends on nothing from the rest of the game</button>
+  <button data-fb="No — passing a reference is cheap; this isn't about copy cost.">Passing two ints avoids copying a large struct</button>
+  <button data-fb="No — both compile fine; it's a coupling choice, not a correctness one.">Only primitives are allowed across translation units</button>
+  <button data-fb="No — const-correctness is satisfied by both forms.">A const reference cannot be read inside the function</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <div class="q">Why does <code>drawHud</code> NOT call <code>BeginDrawing</code>/<code>EndDrawing</code>?</div>
+  <button data-fb="No — it can call raylib freely; the issue is responsibility, not access.">The HUD has no permission to call raylib frame functions</button>
+  <button data-fb="Right — frame lifecycle and draw order are the scene's job; the HUD only emits into the open frame.">Frame lifecycle belongs to the scene, not the overlay</button>
+  <button data-fb="No — it draws every frame just like the world; it's not conditional.">The HUD only draws on some frames, not all</button>
+  <button data-fb="No — nesting Begin/End isn't the concern being taught here.">Because BeginDrawing cannot be called twice ever</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-org">Core Guidelines C.4</a>
+(member only if it needs the representation) read <em>together with</em>
+<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-narrow">F.2 (a function should take only what it uses)</a> — the two rules that decide "class vs free function" and "what to pass." See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: if the HUD grows (lives, level, multiplier), when does
+the primitive list become a <code>HudData</code> struct? Should the gameover/title text also route through
+a shared text helper? And the bigger structural one: should the HUD become its own <em>overlay scene</em>
+drawn on top of gameplay — i.e. the per-scene-state / scene-stack arc?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0010-projectile-pool.html">Lesson 10: the projectile pool</a></span>
+  <span>Not everything is a class. Next: per-scene state / pause overlay.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 11 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

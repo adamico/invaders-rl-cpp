@@ -39,8 +39,12 @@
     Applied FROM MEMORY (retrieval practice worked). User added dir param to fire (enemies-shoot hook).
     First pass leaked pool internals in PlayerShoot (kept slot loop + unconditional sound); corrected.
     See LR-0011.
+11. [LESSON DELIVERED L0011, awaiting apply] HUD extraction — the "when NOT to make a class" lesson.
+    HUD owns no state -> FREE function drawHud(int score, int health) in hud.h/.cpp, NOT a class.
+    Takes primitives not GameState& (zero coupling, hud.h includes nothing game-specific). Boundary:
+    HUD draws into frame; scene owns Begin/EndDrawing lifecycle. Reinforces C.4 from the other side.
 Possible future arcs (confirm with user before starting a new mission):
-- HUD as own helper/overlay scene; collision system; per-scene state (pause); maybe templated pool.
+- Per-scene state / pause overlay (scene stack); collision system; shared text helper; templated pool.
 - Per-scene state as class members (pause menu, settings, level-complete).
 - Revisit the repo's original RL-environment goal (currently out of scope in MISSION.md).
 
