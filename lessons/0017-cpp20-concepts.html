@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 17 · C++20 concepts</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 17 · Refactor · C++20 concepts</span>
+<h1>Name the contract your templates already assume</h1>
+<p class="subtitle">Your <code>overlaps&lt;A,B&gt;</code> accepts <em>any</em> two types and hopes they have <code>.pos</code> and <code>.radius</code>. <code>Pool&lt;T,N&gt;</code> accepts any <code>T</code> and hopes it has <code>.active</code>. Today those hopes become <strong>named, checked requirements</strong> — so a wrong type is rejected at the call boundary with a readable message, not deep inside the body.</p>
+
+<h2>The problem: invisible, unchecked requirements</h2>
+<p>Since L13 your templates do <em>compile-time duck typing</em>: "if it has <code>.pos</code> and
+<code>.radius</code>, it works." That's powerful but the contract is <strong>implicit</strong> — written
+nowhere, enforced only by the body happening to compile. Two costs:</p>
+<ol class="steps">
+<li><strong>Bad diagnostics.</strong> Pass a type missing <code>.radius</code> and the error points <em>inside</em>
+<code>overlaps</code> at <code>CheckCollisionCircles</code> — "no member named radius" — blaming the
+implementation, not your call. In real codebases these errors are pages long.</li>
+<li><strong>No documentation.</strong> Reading <code>template &lt;typename A, typename B&gt;</code> tells you
+nothing about what <code>A</code> must provide. The requirement lives only in the author's head.</li>
+</ol>
+<p>A <strong>concept</strong> is a named, compile-time predicate over a type that fixes both: it documents the
+requirement <em>and</em> moves the check to the boundary. <span class="cite">[<a href="https://en.cppreference.com/w/cpp/language/constraints">cppreference — Constraints and concepts</a>]</span></p>
+
+<h2>Anatomy of a concept</h2>
+<pre><span class="cm">// a concept is a compile-time bool predicate over a type T</span>
+template &lt;typename T&gt;
+concept Collidable = requires(const T t) {
+  { t.pos }    -&gt; std::convertible_to&lt;Vector2&gt;;
+  { t.radius } -&gt; std::convertible_to&lt;float&gt;;
+};</pre>
+<p>Reading it piece by piece:</p>
+<table>
+<tr><th>Piece</th><th>Meaning</th></tr>
+<tr><td><code>concept Name =</code></td><td>declares a named predicate; the right-hand side is a <code>constexpr bool</code> over the type.</td></tr>
+<tr><td><code>requires(const T t)</code></td><td>a <em>requires-expression</em>: introduces a hypothetical <code>t</code> so you can write expressions that must be valid. Nothing is actually constructed.</td></tr>
+<tr><td><code>{ t.pos };</code></td><td>a <em>simple requirement</em>: this expression must compile.</td></tr>
+<tr><td><code>{ t.pos } -&gt; std::convertible_to&lt;Vector2&gt;;</code></td><td>a <em>compound requirement</em>: expression must compile <strong>and</strong> its result type must satisfy the trailing constraint.</td></tr>
+</table>
+<p><code>std::convertible_to</code> is a standard library concept from <code>&lt;concepts&gt;</code>. The whole
+thing evaluates to <code>true</code> only for types that have both members with compatible types.</p>
+
+<h2>Using a concept to constrain a template</h2>
+<p>Swap the bare <code>typename</code> for the concept name. Three equivalent spellings — pick the terse one:</p>
+<pre><span class="cm">// collision.h</span>
+#pragma once
+#include &lt;concepts&gt;
+#include "raylib.h"
+
+template &lt;typename T&gt;
+concept Collidable = requires(const T t) {
+  { t.pos }    -&gt; std::convertible_to&lt;Vector2&gt;;
+  { t.radius } -&gt; std::convertible_to&lt;float&gt;;
+};
+
+<span class="cm">// constrained: A and B must both be Collidable</span>
+template &lt;Collidable A, Collidable B&gt;
+bool overlaps(const A&amp; a, const B&amp; b) {
+  return CheckCollisionCircles(a.pos, a.radius, b.pos, b.radius);
+}</pre>
+<p><code>template &lt;Collidable A&gt;</code> reads "A is some type satisfying Collidable" — exactly like
+<code>template &lt;typename A&gt;</code> but with the constraint attached. (Equivalent: a trailing
+<code>requires Collidable&lt;A&gt; &amp;&amp; Collidable&lt;B&gt;</code> clause, or the abbreviated
+<code>bool overlaps(const Collidable auto&amp; a, const Collidable auto&amp; b)</code>. Same effect; the
+two-param form above is clearest here.) <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rt-concepts">Core Guidelines T.10/T.11: specify concepts for template arguments</a>]</span></p>
+
+<h2>Before / after the error message</h2>
+<p>Suppose someone calls <code>overlaps(score, enemy)</code> where <code>score</code> is an <code>int</code>.</p>
+<table>
+<tr><th>Without concept (now)</th><th>With concept</th></tr>
+<tr><td>Error deep inside: <code>request for member 'pos' in 'a', which is of non-class type 'const int'</code> — points at <code>collision.h</code>'s body.</td><td>Error at the call: <code>constraints not satisfied … the required expression 't.pos' is invalid</code> — names <code>Collidable</code> and your call site.</td></tr>
+</table>
+<p>The constraint turns "the body failed to compile" into "you passed the wrong kind of thing." That's the
+entire payoff: same machine code, much better failure mode, self-documenting signature.</p>
+
+<h2>Second concept: <code>Poolable</code> for <code>Pool&lt;T,N&gt;</code></h2>
+<p><code>Pool</code> assumes <code>T</code> has a <code>bool active</code> — <code>acquire</code> tests
+<code>!item.active</code>, <code>activeCount</code>/<code>eachActive</code> test <code>item.active</code>. Name it:</p>
+<pre><span class="cm">// pool.h — add near the top</span>
+#include &lt;concepts&gt;
+
+template &lt;typename T&gt;
+concept Poolable = requires(T t) {
+  { t.active } -&gt; std::convertible_to&lt;bool&gt;;
+};
+
+template &lt;Poolable T, std::size_t N&gt; class Pool {
+  <span class="cm">// ...body unchanged...</span>
+};</pre>
+<p>Now <code>Pool&lt;Enemy, 55&gt;</code> compiles (Enemy has <code>active</code>); <code>Pool&lt;Vector2, 4&gt;</code>
+is rejected at the declaration with "Vector2 does not satisfy Poolable" instead of an error inside
+<code>acquire</code>. The non-type param <code>std::size_t N</code> stays exactly as it was — concepts
+constrain <em>type</em> params; <code>N</code> is a value.</p>
+
+<div class="why-box">
+<strong>Why <code>requires(T t)</code> here but <code>requires(const T t)</code> for Collidable?</strong>
+No deep reason in this code — both members are just read. Use <code>const T</code> when every requirement is
+read-only (documents that you don't mutate to test the contract). If a requirement needed a non-const
+operation (e.g. <code>{ t.reset() }</code>), you'd drop the <code>const</code>. Prefer the most-const form
+that still compiles.
+</div>
+
+<h2>The one build change: c++17 → c++20</h2>
+<p>Concepts are a C++20 feature. Your <code>Makefile</code> line 19 is the only thing standing in the way:</p>
+<pre><span class="cm"># Makefile, line 19 — change c++17 to c++20</span>
+CXXFLAGS = -std=c++20 -Wall -I$(RAYLIB_SRC) -Iinclude</pre>
+<p>Nothing else in the build moves. Everything you wrote in L1–L16 is valid C++20 unchanged — the standard
+is (almost entirely) a superset. If <code>&lt;concepts&gt;</code> or <code>std::convertible_to</code> isn't
+found after the bump, your compiler is too old; check <code>c++ --version</code> (need Clang 10+/GCC 10+,
+both fine on current macOS).</p>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>Makefile</code> — line 19: <code>-std=c++17</code> → <code>-std=c++20</code>.</li>
+<li><code>include/collision.h</code> — <code>#include &lt;concepts&gt;</code>; add the <code>Collidable</code> concept; change <code>template &lt;typename A, typename B&gt;</code> → <code>template &lt;Collidable A, Collidable B&gt;</code>.</li>
+<li><code>include/pool.h</code> — <code>#include &lt;concepts&gt;</code>; add the <code>Poolable</code> concept; change <code>template &lt;typename T, std::size_t N&gt;</code> → <code>template &lt;Poolable T, std::size_t N&gt;</code>.</li>
+<li>Build &amp; play full cycle — behaviour <em>identical</em> (concepts are compile-time only; zero runtime cost, zero codegen change).</li>
+<li><strong>Prove it (optional):</strong> temporarily add <code>overlaps(state.score, state.player);</code> somewhere, build, read the new error, delete it. Seeing the boundary error is the lesson.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) Forgetting <code>#include &lt;concepts&gt;</code> — <code>std::convertible_to</code>
+won't resolve. (2) Concepts constrain type params only; don't try to wrap <code>std::size_t N</code>. (3) The
+<code>-&gt;</code> in a compound requirement is <em>not</em> a return-type arrow — it's "result type must satisfy
+this constraint"; the thing after it must itself be a concept, not a plain type (use
+<code>std::convertible_to&lt;Vector2&gt;</code>, not bare <code>Vector2</code>). (4) This is polish: it changes
+diagnostics and documentation, not behaviour — don't expect the game to play differently.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">What does constraining <code>overlaps</code> with <code>Collidable</code> change at runtime?</div>
+  <button data-fb="No — concepts are compile-time only; they emit no runtime check.">It adds a runtime check that members exist</button>
+  <button data-fb="No — there's no virtual dispatch involved; it's still a template.">It makes the call go through a vtable</button>
+  <button data-fb="Right — identical machine code; the only change is which errors compile and how they read.">Nothing — same codegen; it only moves/clarifies compile errors</button>
+  <button data-fb="No — concepts don't box or allocate; that'd be std::function/type-erasure.">It boxes the arguments for type erasure</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <div class="q">In <code>{ t.radius } -&gt; std::convertible_to&lt;float&gt;;</code>, the <code>-&gt;</code> means…</div>
+  <button data-fb="No — it is not the function return-type arrow despite looking like one.">the function returns a float</button>
+  <button data-fb="Right — the expression must compile and its result type must satisfy the trailing concept.">the expression's result type must satisfy that constraint</button>
+  <button data-fb="No — there's no pointer dereference happening here.">t is a pointer being dereferenced</button>
+  <button data-fb="No — it doesn't convert anything; it constrains the result type.">it converts radius to a float at runtime</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why prefer <code>template &lt;Collidable A&gt;</code> over plain <code>template &lt;typename A&gt;</code>?</div>
+  <button data-fb="Right — the requirement is documented in the signature and checked at the boundary with a clear message.">It names the contract and gives errors at the call site, not inside the body</button>
+  <button data-fb="No — it doesn't run faster; codegen is unchanged.">The constrained version produces faster code</button>
+  <button data-fb="No — both are equally generic; the concept just filters which types are accepted.">It makes the template accept more types</button>
+  <button data-fb="No — neither requires inheritance; it's still duck-typed, just named.">It forces A to inherit a base interface</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://en.cppreference.com/w/cpp/language/constraints">cppreference — Constraints and concepts</a>
+(requires-expressions, simple vs compound requirements) and the <a href="https://en.cppreference.com/w/cpp/concepts">standard concepts library</a>
+(<code>std::convertible_to</code>, <code>std::integral</code>, …), plus
+<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#t-concepts">Core Guidelines T: concepts</a>
+(T.10 specify concepts, T.20 avoid "concepts" without meaningful semantics). See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: is a two-line <code>Poolable</code> worth it, or does it
+just restate what <code>acquire</code> already implies? Could <code>Collidable</code> capture <em>semantic</em>
+intent (a circle in world space) rather than just "has these two fields" — and is that a feature or a smell
+(T.20)? And the structural one: with concepts in, the C++ idiom surface is genuinely exhausted — is it time
+to point this engine back at the original RL goal in <a href="../MISSION.md">MISSION.md</a>?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0016-encapsulation-capstone.html">Lesson 16: encapsulation capstone</a></span>
+  <span>Concepts: the contract, named and checked.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 17 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -70,7 +70,13 @@
    class Swarm). Encapsulation now composes one level up. See LR-0017.
 LESSON-WRITING FEEDBACK: in "final shape" summary blocks, DON'T abbreviate template method bodies to a
 bare `;` - reads as "move to .cpp" which is impossible for templates. Show real bodies / mark elision.
-=== C++ IDIOMATIC-REFACTOR ARC COMPLETE (16 lessons). ===
+17. [DONE L0017] C++20 concepts. Collidable (overlaps: pos+radius) + Poolable (Pool's T: active).
+    bare typename -> named/checked constraints; errors at boundary not body; zero codegen change.
+    Real session content = TOOLCHAIN: c++17->c++20 in 3 places (Makefile + .clangd + compile_commands;
+    clangd reads .clangd not Makefile -> "concept unrecognized" was stale -std). Stale 3-entry DB (ref'd
+    deleted player.cpp) regenerated via `bear -- make` -> 8 TUs. IWYU: <concepts> was transitive via
+    <array>, added explicit. User spotting tooling smells unprompted. See LR-0018.
+=== C++ IDIOMATIC-REFACTOR ARC COMPLETE (17 lessons). ===
 Possible future arcs (confirm with user before starting a new mission):
 - C++20 concepts (name element requirements); Swarm forwarding own iteration (Demeter); REVISIT RL
   GOAL (mission change per MISSION.md — confirm + new learning record) as C++ refactor arc completes.

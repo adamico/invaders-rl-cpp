@@ -2,8 +2,14 @@
 
 #include <array>
 #include <cstddef>
+#include <concepts>
 
-template <typename T, std::size_t N> class Pool {
+template <typename T>
+concept Poolable = requires(T t) {
+  { t.active } -> std::convertible_to<bool>;
+};
+
+template <Poolable T, std::size_t N> class Pool {
 public:
   T* acquire() {
     for (T& item : items)
