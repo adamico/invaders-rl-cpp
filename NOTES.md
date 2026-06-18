@@ -20,8 +20,15 @@
 4. [DONE L0004] const-correctness (draw path) — bridge step before methods
 5. [DONE L0005] Entity classes — Projectile/Player/Enemy own update()/draw()/spawn; swarm logic
    stays free (C.4). Screen-size unified on windowSize constexpr.
-6. [NEXT L0006] Scene base class + polymorphism instead of enum switch — introduces inheritance,
-   virtual functions, virtual destructor, and likely unique_ptr + move semantics (deferred since L1).
+6. [DONE L0006] Scene base class + polymorphism — virtual update/draw, virtual dtor, unique_ptr +
+   move, makeScene factory. Bonus: GameScene -> enum class (scoped, strong-typed).
+
+## ROADMAP COMPLETE — C->C++ idiomatic port finished.
+Possible future arcs (confirm with user before starting a new mission):
+- SceneManager class owning the unique_ptr + transition logic (lift it out of main).
+- update() returns next scene -> removes the last (factory) switch.
+- Per-scene state as class members (pause menu, settings, level-complete).
+- Revisit the repo's original RL-environment goal (currently out of scope in MISSION.md).
 
 ## Deferred tidy-ups
 - (resolved) Mixed screen-size source — unified on windowSize in L0005.
