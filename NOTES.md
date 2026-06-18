@@ -43,8 +43,15 @@
     drawHud(health, score), primitives not GameState&, hud.h includes nothing game-specific. Applied
     clean in one pass, user called it easy. CALIBRATION: SRP/class-vs-free judgment now solid; pure-rep
     lessons add little -> next lessons need genuinely NEW mechanics (scene stack, templates). LR-0012.
+12. [LESSON DELIVERED L0012, awaiting apply] Tell-Don't-Ask / invariant ownership. USER spotted the
+    smell themselves: collision code does state.swarm.activeCount-- (maintains swarm invariant from
+    outside). Fix: Swarm::deactivate(Enemy&) with idempotent guard owns flag+count atomically;
+    Projectile::deactivate(). Collision fns stay FREE (mediate two types) but TELL instead of poke.
+    Same C.4 -> opposite conclusion vs deactivate (member). Deferred (named): name-lies (check vs
+    effect split), duplicated if(!active)continue (-> active-iteration helper / templates arc).
 Possible future arcs (confirm with user before starting a new mission):
-- Per-scene state / pause overlay (scene stack); collision system; shared text helper; templated pool.
+- Make swarm/pool members private; split collision check from effect; templated Pool<T> / active-iter
+  helper; per-scene state / pause overlay (scene stack).
 - Per-scene state as class members (pause menu, settings, level-complete).
 - Revisit the repo's original RL-environment goal (currently out of scope in MISSION.md).
 

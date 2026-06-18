@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 12 · Tell, Don't Ask</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 12 · Refactor · Invariant ownership</span>
+<h1>Whoever owns the data owns the rule</h1>
+<p class="subtitle">You spotted it yourself: the collision functions smell. Not because they're free functions — that part is right — but because they reach into the swarm's guts and maintain an invariant that isn't theirs to maintain. This lesson fixes the deepest of those smells.</p>
+
+<h2>The bug waiting to happen</h2>
+<p>Look at one line inside <code>CheckBulletEnemyCollisions</code>:</p>
+<pre>enemy.active = false;
+<span class="hi">state.swarm.activeCount--;</span>   <span class="cm">// ← a stranger maintaining the swarm's invariant</span></pre>
+<p>The <code>Swarm</code> has an <strong>invariant</strong>: <code>activeCount</code> equals the number of
+enemies whose <code>active</code> flag is true. Right now that rule is enforced <em>outside</em> the swarm,
+in collision code. Two things must happen together — flip the flag, decrement the count — and nothing
+guarantees they do. The day someone deactivates an enemy somewhere else and forgets the <code>--</code>,
+<code>activeCount</code> drifts, and your victory check (<code>activeCount &lt;= 0</code>) fires early or
+never. It will compile fine and fail silently — the worst kind. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-struct">Core Guidelines C.2: use class (not struct) when there's an invariant; the class's job is to keep it</a>]</span></p>
+
+<div class="why">
+<h3>The principle: an invariant lives with the data it constrains</h3>
+<p>If <code>activeCount</code> must always match the active flags, then the <em>only</em> code allowed to
+change either of them should be the <code>Swarm</code> itself. That way the rule is enforced in one place
+and cannot be violated from outside. This is the same idea as <code>SceneManager</code> owning the
+<code>current_</code>/<code>shown_</code> pair (lesson 7) — you've met it before; now you're applying it to
+catch your own smell.</p>
+</div>
+
+<h2>The fix: a verb on the owner</h2>
+<p>Give the swarm an operation that maintains both fields atomically, then make it the <em>only</em> path:</p>
+<pre><span class="cm">// swarm.h</span>
+struct Swarm {
+  ...
+  <span class="add">void deactivate(Enemy&amp; enemy);   // the one sanctioned way to kill an enemy</span>
+};</pre>
+<pre><span class="cm">// swarm.cpp</span>
+void Swarm::deactivate(Enemy&amp; enemy) {
+  <span class="add">if (!enemy.active) return;       // idempotent guard — the count can't drift</span>
+  enemy.active = false;
+  activeCount--;
+}</pre>
+<p>The guard matters: it makes <code>deactivate</code> safe to call twice on the same enemy without
+double-decrementing. The invariant is now structurally protected — there's no way to flip the flag without
+adjusting the count, because the only code that touches them lives here.</p>
+
+<h2>Tell, don't ask</h2>
+<p>Now the collision function stops <em>asking</em> for the swarm's internals and mutating them, and instead
+<em>tells</em> the swarm what happened:</p>
+<pre><span class="cm">// scene_gameplay.cpp — CheckBulletEnemyCollisions</span>
+if (CheckCollisionCircles(bullet.pos, bullet.radius, enemy.pos, enemy.radius)) {
+  PlaySound(state.resources.explosionSound);
+  <span class="add">bullet.deactivate();              // the projectile owns its own flag</span>
+  <span class="add">state.swarm.deactivate(enemy);    // the swarm owns flag + count, together</span>
+  state.score += enemy.scoreValue;
+}</pre>
+<pre><span class="cm">// CheckPlayerEnemyCollisions — same move</span>
+if (CheckCollisionCircles(state.player.pos, state.player.radius, enemy.pos, enemy.radius)) {
+  <span class="add">state.swarm.deactivate(enemy);</span>
+  state.player.health = 0;
+}</pre>
+<p><strong>Tell, Don't Ask</strong>: don't pull an object's data out to make a decision and write it back —
+tell the object to do the thing, and let it manage its own state. <code>state.swarm.activeCount--</code>
+reaches two levels into another object's guts (a <em>Law of Demeter</em> violation); <code>swarm.deactivate(enemy)</code>
+respects the boundary. The collision code now reads as <em>intent</em> — "a bullet hit an enemy: kill the
+bullet, kill the enemy, score it" — not as bookkeeping. <span class="cite">[<a href="https://martinfowler.com/bliki/TellDontAsk.html">Fowler — TellDontAsk</a>; <a href="https://en.wikipedia.org/wiki/Law_of_Demeter">Law of Demeter</a>]</span></p>
+
+<pre><span class="cm">// game.h — Projectile gains the same intent-revealing verb (it has no count, so it's trivial — but symmetric)</span>
+struct Projectile {
+  ...
+  <span class="add">void deactivate() { active = false; }</span>
+};</pre>
+
+<div class="why">
+<h3>Why <code>deactivate</code> is a member but the collision check stays free</h3>
+<p>No contradiction with lessons 9–11. The rule is C.4: a function is a member when it needs to maintain
+the type's <em>representation/invariant</em>. <code>deactivate</code> maintains the swarm's count invariant
+→ member. The collision <em>check</em> mediates two unrelated types and maintains neither's invariant →
+free. You're applying the <em>same</em> rule to reach opposite conclusions for different functions. That's
+the skill: not "members vs free" as dogma, but "who owns the invariant being touched?"</p>
+</div>
+
+<h2>Smells we're NOT fixing today (named, deferred on purpose)</h2>
+<ul>
+<li><strong>The name lies.</strong> <code>CheckBulletEnemyCollisions</code> doesn't just check — it scores,
+plays sound, kills. Splitting <em>detection</em> (returns hits) from <em>effect</em> (applies them) would
+make it testable and honest. Worth doing, but it's a separate idea; one concept per lesson.</li>
+<li><strong>Duplicated <code>if (!active) continue;</code></strong> in every loop. That repetition hints at
+an "iterate only active elements" helper on the pool/swarm. Note it; don't chase it yet.</li>
+</ul>
+<p>Recognising and <em>deferring</em> smells is a real skill — you don't have to fix everything you see in
+one pass.</p>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/swarm.h</code> — declare <code>void deactivate(Enemy&amp; enemy);</code>.</li>
+<li><code>src/swarm.cpp</code> — define it, with the idempotent <code>if (!enemy.active) return;</code> guard.</li>
+<li><code>include/game.h</code> — add <code>void deactivate() { active = false; }</code> to <code>Projectile</code> (inline is fine; it's trivial).</li>
+<li><code>src/scene_gameplay.cpp</code> — in both collision functions, replace the manual flag/count pokes with <code>state.swarm.deactivate(enemy)</code> and <code>bullet.deactivate()</code>. Delete every <code>activeCount--</code> outside the swarm.</li>
+<li>Build &amp; play: shoot enemies → score + count drop correctly → clear them all → victory still fires exactly once. Take a hit → death.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) Grep for any remaining <code>activeCount</code> outside
+<code>swarm.cpp</code> — there should be exactly zero writes left. (2) Don't forget the idempotent guard;
+without it, a future double-kill silently corrupts the count. (3) Victory check stays in the scene
+(<code>activeCount &lt;= 0</code> is a <em>read</em>, which is fine — reads don't threaten the invariant).</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="1">
+  <div class="q">What's the core problem with <code>state.swarm.activeCount--</code> in collision code?</div>
+  <button data-fb="No — performance isn't the issue; correctness is.">Decrementing an int is too slow there</button>
+  <button data-fb="Right — the swarm's invariant is maintained from outside, so it can silently drift.">An invariant is enforced outside the class that owns it</button>
+  <button data-fb="No — the field's visibility isn't the deepest issue; who maintains it is.">activeCount should be a private member</button>
+  <button data-fb="No — the count is needed; the problem is who updates it.">The swarm shouldn't track a count at all</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why does <code>deactivate</code> guard with <code>if (!enemy.active) return;</code>?</div>
+  <button data-fb="Exactly — it makes the call idempotent so the count can't be decremented twice.">So calling it twice can't corrupt the count</button>
+  <button data-fb="No — it's not about speed; it's about the invariant staying correct.">To skip the function call for performance</button>
+  <button data-fb="No — the reference is always valid here; that's not the concern.">To avoid dereferencing a null enemy</button>
+  <button data-fb="No — drawing is unrelated to this method.">So inactive enemies still get drawn</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <div class="q">"Tell, Don't Ask" means…</div>
+  <button data-fb="No — that's the opposite; pulling data out to mutate it is 'ask'.">Read an object's fields, decide, then write them back</button>
+  <button data-fb="No — it's not about making everything private or public.">Always make data members public for convenience</button>
+  <button data-fb="Right — ask the object to perform the operation and manage its own state.">Tell the object to act; let it manage its own state</button>
+  <button data-fb="No — it's about responsibility, not call frequency.">Call methods as rarely as possible per frame</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://martinfowler.com/bliki/TellDontAsk.html">Martin Fowler — Tell, Don't Ask</a>,
+paired with <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-struct">Core Guidelines C.2 (invariants justify a class)</a>
+and <a href="https://en.wikipedia.org/wiki/Law_of_Demeter">the Law of Demeter</a>. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: should <code>activeCount</code> and <code>enemies</code>
+become <code>private</code> now that <code>deactivate</code> is the sanctioned path (and what breaks if you
+try)? Should the collision <em>check</em> be split from the <em>effect</em> next? And: could
+<code>Swarm</code>/<code>ProjectilePool</code> share an "iterate active elements" helper to kill the
+duplicated <code>if (!active) continue;</code> — is that the templates arc?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0011-hud-extraction.html">Lesson 11: extracting the HUD</a></span>
+  <span>The invariant is home. Next: make members private · split check from effect · templates.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 12 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
