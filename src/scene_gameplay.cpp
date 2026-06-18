@@ -105,7 +105,7 @@ void detectBulletEnemyCollisions(GameState& state) {
   for (Projectile& bullet : state.projectilePool) {
     if (!bullet.active) continue;
 
-    for (Enemy& enemy : state.swarm.pool) {
+    for (Enemy& enemy : state.swarm) {
       if (!enemy.active) continue;
 
       if (overlaps(bullet, enemy)) {
