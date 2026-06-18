@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 10 · The projectile pool</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 10 · Refactor · SRP, again — on purpose</span>
+<h1>The bullets want to be a pool</h1>
+<p class="subtitle">You just did this move for the swarm. Now do it for the bullets — same extraction, second rep. Repetition <em>is</em> the lesson: the pattern only sticks when you apply it without being walked through every line. The one new idea is naming what the bullet array already is — an <strong>object pool</strong>.</p>
+
+<div class="why">
+<h3>Why repeat a refactor you've already seen</h3>
+<p>Lesson 9 was guided. This one is mostly you. That gap is deliberate — <strong>retrieval practice</strong>:
+recalling the steps from memory builds durable skill, where re-reading them only builds the illusion of it.
+If you find yourself reaching for the L9 lesson, that's the signal the pattern isn't stored yet. Try from
+memory first.</p>
+</div>
+
+<h2>What an object pool is</h2>
+<p>Your bullets are already a pool, you just never named it. A <strong>pool</strong> is a fixed-size block
+of pre-allocated objects, each with an <code>active</code> flag; instead of allocating/freeing at runtime,
+you flip flags. <code>std::array&lt;Projectile, MAX_PROJECTILES&gt;</code> + the <code>active</code> bool +
+"find the first inactive slot to spawn" is the textbook pattern. It avoids per-shot heap allocation and
+keeps the bullets contiguous for cache-friendly iteration. <span class="cite">[<a href="https://gameprogrammingpatterns.com/object-pool.html">Game Programming Patterns — Object Pool</a>]</span></p>
+<p>Today's three loose bullet functions (<code>InitBullets</code>, <code>UpdateProjectiles</code>,
+<code>DrawProjectiles</code>) plus the slot-finding loop in <code>PlayerShoot</code> are exactly the same
+"invariant cluster" smell as the swarm. Same fix: one class.</p>
+
+<h2>The class — mirror of <code>Swarm</code></h2>
+<pre><span class="cm">// NEW FILE: include/projectile_pool.h</span>
+#pragma once
+#include "game.h"   <span class="cm">// for Projectile, MAX_PROJECTILES</span>
+
+struct ProjectilePool {
+  std::array&lt;Projectile, MAX_PROJECTILES&gt; bullets{};
+
+  void reset();                          <span class="cm">// was InitBullets</span>
+  <span class="hi">bool</span> fire(Vector2 from);                 <span class="cm">// was the slot loop in PlayerShoot — returns "did it fire?"</span>
+  void update(float dt);                 <span class="cm">// was UpdateProjectiles</span>
+  void draw(const Texture2D&amp; texture) const;  <span class="cm">// was DrawProjectiles</span>
+};</pre>
+
+<div class="why">
+<h3>Why <code>fire</code> returns a <code>bool</code> — same decoupling as <code>Swarm::update</code></h3>
+<p>The old <code>PlayerShoot</code> did two unrelated things: it played the laser <em>sound</em>, and it
+found a bullet slot. Sound is an audio/scene concern; the pool only knows about slots. So the pool's
+<code>fire</code> reports whether a slot was free (<code>true</code> = a bullet launched), and the
+<strong>caller decides</strong> whether to play the sound. The pool never touches
+<code>GameResources</code> or audio. Identical "report a fact, let the caller act" pattern you used for
+the swarm's breach. As a bonus you fix a latent bug: the old code played the sound even when the pool was
+full and no bullet actually fired.</p>
+</div>
+
+<h2>The bodies (relocated, logic unchanged)</h2>
+<pre><span class="cm">// NEW FILE: src/projectile_pool.cpp</span>
+#include "projectile_pool.h"
+
+constexpr float PROJECTILE_SPEED = 500.0f;   <span class="cm">// move these out of scene_gameplay.cpp</span>
+constexpr float PROJECTILE_RADIUS = 5.0f;
+
+void ProjectilePool::reset() {
+  for (Projectile&amp; b : bullets) b = { .active = false };
+}
+
+bool ProjectilePool::fire(Vector2 from) {
+  for (Projectile&amp; b : bullets) {
+    if (b.active) continue;
+    b.spawn(from);          <span class="cm">// Projectile::spawn already sets speed/radius/dir (lesson 5)</span>
+    return true;            <span class="cm">// launched</span>
+  }
+  return false;             <span class="cm">// pool full — nothing fired</span>
+}
+
+void ProjectilePool::update(float dt) {
+  for (Projectile&amp; b : bullets) b.update(dt);
+}
+
+void ProjectilePool::draw(const Texture2D&amp; texture) const {
+  for (const Projectile&amp; b : bullets) b.draw(texture);
+}</pre>
+<p>Note <code>PROJECTILE_SPEED/RADIUS</code> are used by <code>Projectile::spawn</code>, which already
+lives in <code>scene_gameplay.cpp</code> today. Keep <code>spawn</code>'s definition wherever it is and
+make sure the constants are visible to it — simplest is to leave <code>Projectile::spawn</code> in
+<code>scene_gameplay.cpp</code> with its constants, and have <code>fire</code> just call it. If you'd
+rather move <code>Projectile::spawn</code> into <code>projectile_pool.cpp</code> too, move the constants
+with it. Either works; don't duplicate the constants in two files.</p>
+
+<h2>Shrink the state — same as the swarm</h2>
+<pre><span class="cm">// game_state.h</span>
+#include "swarm.h"
+<span class="add">#include "projectile_pool.h"</span>
+
+struct GameState {
+  Player player;
+  <span class="del">std::array&lt;Projectile, MAX_PROJECTILES&gt; bullets;   // remove</span>
+  <span class="add">ProjectilePool projectiles;                       // add</span>
+  Swarm swarm;
+  bool victory;
+  GameResources resources;
+  int score;
+};</pre>
+
+<h2>Rewire <code>scene_gameplay.cpp</code></h2>
+<p>Delete <code>InitBullets</code>, <code>UpdateProjectiles</code>, <code>DrawProjectiles</code>. Then:</p>
+<pre><span class="cm">// InitGameplay</span>
+<span class="add">state-&gt;projectiles.reset();   // was InitBullets(state);</span>
+
+<span class="cm">// PlayerShoot — caller owns the sound now</span>
+void PlayerShoot(GameState&amp; state) {
+  if (!IsKeyPressed(KEY_SPACE)) return;
+  <span class="add">if (state.projectiles.fire(state.player.pos))      // only if a bullet actually launched</span>
+    <span class="add">PlaySound(state.resources.laserSound);</span>
+}
+
+<span class="cm">// SceneGameplay::update</span>
+  state.player.update(dt);
+  PlayerShoot(state);
+  <span class="add">state.projectiles.update(dt);   // was UpdateProjectiles(state, dt);</span>
+  CheckBulletEnemyCollisions(state);
+  CheckPlayerEnemyCollisions(state);
+
+<span class="cm">// SceneGameplay::draw</span>
+  <span class="add">state.projectiles.draw(state.resources.laserTexture);   // was DrawProjectiles(state);</span>
+
+<span class="cm">// CheckBulletEnemyCollisions — bullets now live in the pool</span>
+  for (Projectile&amp; bullet : <span class="add">state.projectiles.bullets</span>) { ... }   <span class="cm">// still a FREE function (C.4/C.5)</span></pre>
+
+<div class="why">
+<h3>Collisions stay free — you already know why</h3>
+<p><code>CheckBulletEnemyCollisions</code> straddles the pool <em>and</em> the swarm. It belongs to neither
+class; it stays a non-member that reaches into both <code>state.projectiles.bullets</code> and
+<code>state.swarm.enemies</code>. Same C.4/C.5 judgment from lesson 9 — nothing new, just confirm you'd
+reach the same conclusion unprompted.</p>
+</div>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/projectile_pool.h</code> <strong>(new)</strong> — the <code>ProjectilePool</code> struct.</li>
+<li><code>src/projectile_pool.cpp</code> <strong>(new)</strong> — <code>reset</code>/<code>fire</code>/<code>update</code>/<code>draw</code> bodies + projectile constants.</li>
+<li><code>include/game_state.h</code> — include the new header; swap the <code>bullets</code> array for <code>ProjectilePool projectiles;</code>.</li>
+<li><code>src/scene_gameplay.cpp</code> — delete the three bullet free-functions; rewire <code>InitGameplay</code>, <code>PlayerShoot</code> (sound on <code>fire()==true</code>), <code>update</code>, <code>draw</code>, and the collision loop (<code>state.projectiles.bullets</code>).</li>
+<li>No Makefile change — <code>src/*.cpp</code> globbed.</li>
+<li>Build &amp; play: hold space (bullets cap at MAX_PROJECTILES, sound only when one actually fires), kill enemies, full cycle.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) grep for leftover <code>state.bullets</code> → all become
+<code>state.projectiles.bullets</code>. (2) Duplicated <code>PROJECTILE_*</code> constants in two files →
+keep one home. (3) Forgetting <code>projectiles.reset()</code> in <code>InitGameplay</code> → on restart,
+old bullets may still be flagged active.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="1">
+  <div class="q">What makes the bullet array an "object pool"?</div>
+  <button data-fb="No — pools avoid runtime allocation; that's the opposite.">It allocates a new bullet from the heap per shot</button>
+  <button data-fb="Right — fixed pre-allocated slots reused via an active flag, no runtime alloc.">Fixed pre-allocated slots reused via an active flag</button>
+  <button data-fb="No — sorting is unrelated to the pool pattern.">It keeps bullets sorted by distance each frame</button>
+  <button data-fb="No — a pool's size is fixed; growth is what it avoids.">It grows and shrinks as bullets are fired</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why does <code>fire</code> return a <code>bool</code> instead of playing the sound itself?</div>
+  <button data-fb="Exactly — the pool manages slots; the caller owns the audio decision. Decoupled.">Sound is the caller's concern; the pool only reports success</button>
+  <button data-fb="No — speed isn't the reason; responsibility is.">Returning a bool is faster than calling PlaySound</button>
+  <button data-fb="No — the pool could hold resources, but that's the coupling we avoid.">The pool cannot access GameResources at all</button>
+  <button data-fb="No — there's no base-class signature constraint on fire.">Because fire must match a virtual interface</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Where should <code>CheckBulletEnemyCollisions</code> live after this refactor?</div>
+  <button data-fb="No — putting it on the pool makes the pool reach into the swarm.">A method on ProjectilePool</button>
+  <button data-fb="No — same coupling problem in the other direction.">A method on Swarm</button>
+  <button data-fb="Right — it mediates two types, so it stays a free function touching both.">A free function reaching into both pool and swarm</button>
+  <button data-fb="No — it's gameplay collision, not generic; it belongs near the types it uses.">A method on GameState itself</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://gameprogrammingpatterns.com/object-pool.html">Game Programming Patterns — Object Pool</a>
+(why pools exist, and the active-flag variant you already have). Reinforcement:
+<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-org">Core Guidelines C.4/C.5</a>, same as lesson 9. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: now that both <code>Swarm</code> and
+<code>ProjectilePool</code> exist, is there a shared "pool of active entities" abstraction worth
+templating — or is that premature? Should <code>fire</code> take a direction so enemies can shoot too?
+What's left in <code>scene_gameplay.cpp</code> now, and which is the next responsibility to lift (HUD)?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0009-gameplay-srp-swarm.html">Lesson 09: extract the Swarm</a></span>
+  <span>Two pools down. Remaining: HUD · collision system · per-scene state.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 10 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

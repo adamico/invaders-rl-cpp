@@ -34,8 +34,13 @@
    4 fields -> Swarm member. Swarm::update returns bool breached (scene decides death). Collisions
    stay FREE (C.4/C.5). User self-resolved include cycle better than lesson (moved Enemy+MAX_ENEMIES
    into swarm.h, self-contained). One-pass, no hurdle. See LR-0010.
+10. [DONE L0010] ProjectilePool: mirror of Swarm (reset/fire/update/draw). fire() returns bool ->
+    caller gates laser sound (fixed latent full-pool-sound bug). GameState bullets[] -> projectilePool.
+    Applied FROM MEMORY (retrieval practice worked). User added dir param to fire (enemies-shoot hook).
+    First pass leaked pool internals in PlayerShoot (kept slot loop + unconditional sound); corrected.
+    See LR-0011.
 Possible future arcs (confirm with user before starting a new mission):
-- ProjectilePool class; HUD as own helper/overlay scene; collision system; per-scene state (pause).
+- HUD as own helper/overlay scene; collision system; per-scene state (pause); maybe templated pool.
 - Per-scene state as class members (pause menu, settings, level-complete).
 - Revisit the repo's original RL-environment goal (currently out of scope in MISSION.md).
 
