@@ -155,11 +155,18 @@ void Enemy::moveHorizontally(Vector2 dir, float speed, float deltaTime) {
 
 void Enemy::moveVertically(float amount) { pos.y += amount; }
 
+void Enemy::draw(const Texture2D& texture) const {
+  if (!active)
+    return;
+  DrawOffset(texture, pos, WHITE);
+  DrawCircleLinesV(pos, radius, RED);
+}
+
 void UpdateEnemies(GameState* state, float dt) {
   Vector2 direction = state->enemyDirection;
   float speed = state->enemySpeed;
   bool needToMoveDown = false;
-  int rightEdge = windowSize.x - ENEMY_RADIUS;
+  int rightEdge = GetScreenWidth() - ENEMY_RADIUS;
   int leftEdge = ENEMY_RADIUS;
   for (Enemy& enemy : state->enemies) {
     if (!enemy.active)
@@ -179,7 +186,7 @@ void UpdateEnemies(GameState* state, float dt) {
   if (needToMoveDown) {
     for (Enemy& enemy : state->enemies) {
       enemy.moveVertically(ENEMY_VERTICAL_MOVEMENT);
-      if (enemy.pos.y > windowSize.y) {
+      if (enemy.pos.y > GetScreenHeight()) {
         state->currentScene = GAMEOVER;
         break;
       }
@@ -197,10 +204,7 @@ void UpdateEnemies(GameState* state, float dt) {
 
 void DrawEnemies(const GameState* state) {
   for (const Enemy& enemy : state->enemies) {
-    if (enemy.active) {
-      DrawOffset(state->resources.enemyTexture, enemy.pos, WHITE);
-      DrawCircleLinesV(enemy.pos, enemy.radius, RED);
-    }
+    enemy.draw(state->resources.enemyTexture);
   }
 }
 
@@ -274,7 +278,7 @@ void DrawGameplay(const GameState* state) {
   DrawProjectiles(state);
 
   DrawText(TextFormat("Health: %i", state->player.health), 20,
-           windowSize.y - 40, font_size, WHITE);
+           GetScreenHeight() - 40, font_size, WHITE);
 
   DrawText(TextFormat("Score: %i", state->score), 20, 20, font_size, WHITE);
   EndDrawing();
