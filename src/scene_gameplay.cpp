@@ -12,14 +12,6 @@ constexpr float PLAYER_RADIUS = 12.5f;
 constexpr float PLAYER_SPEED = 300.0f;
 constexpr int PLAYER_HEALTH = 5;
 
-constexpr int MAX_ENEMIES_PER_ROW = 11;
-constexpr int COL_PADDING = 80;
-constexpr int ROW_PADDING = 60;
-constexpr float ENEMY_SPEED = 50.0f;
-constexpr float ENEMY_RADIUS = 15.0f;
-constexpr int ENEMY_SCORE_VALUE = 100;
-constexpr float ENEMY_VERTICAL_MOVEMENT = ROW_PADDING / 2.0f;
-
 constexpr float PROJECTILE_SPEED = 500.0f;
 constexpr float PROJECTILE_RADIUS = 5.0f;
 
@@ -33,30 +25,6 @@ void InitPlayer(GameState* state) {
                            .health = PLAYER_HEALTH};
 }
 
-void InitEnemies(GameState* state) {
-  Vector2 startGridPos = {
-      ((GetScreenWidth() - (MAX_ENEMIES_PER_ROW * COL_PADDING)) / 2.0f) +
-          (COL_PADDING / 2.0f),
-      100};
-  for (int enemyIndex = 0; enemyIndex < MAX_ENEMIES; enemyIndex++) {
-    int column = enemyIndex % MAX_ENEMIES_PER_ROW;
-    int row = enemyIndex / MAX_ENEMIES_PER_ROW;
-    float offsetX = startGridPos.x;
-    float offsetY = startGridPos.y;
-    Enemy enemy = {
-        .pos = (Vector2){offsetX + (column * COL_PADDING),
-                         offsetY + (row * ROW_PADDING)},
-        .radius = ENEMY_RADIUS,
-        .scoreValue = ENEMY_SCORE_VALUE,
-        .active = true,
-    };
-    state->enemies[enemyIndex] = enemy;
-    state->enemyDirection = (Vector2){1.0f, 0.0f};
-    state->enemySpeed = ENEMY_SPEED;
-    state->activeEnemies++;
-  }
-}
-
 void InitBullets(GameState* state) {
   for (int bulletIndex = 0; bulletIndex < MAX_PROJECTILES; bulletIndex++) {
     state->bullets[bulletIndex] = {.active = false};
@@ -66,9 +34,8 @@ void InitBullets(GameState* state) {
 void InitGameplay(GameState* state) {
   state->score = 0;
   state->victory = false;
-  state->activeEnemies = 0;
   InitPlayer(state);
-  InitEnemies(state);
+  state->swarm.reset();
   InitBullets(state);
 }
 
@@ -162,58 +129,12 @@ void Enemy::draw(const Texture2D& texture) const {
   DrawCircleLinesV(pos, radius, RED);
 }
 
-void UpdateEnemies(GameState& state, float dt) {
-  Vector2 direction = state.enemyDirection;
-  float speed = state.enemySpeed;
-  bool needToMoveDown = false;
-  int rightEdge = GetScreenWidth() - ENEMY_RADIUS;
-  int leftEdge = ENEMY_RADIUS;
-  for (Enemy& enemy : state.enemies) {
-    if (!enemy.active)
-      continue;
-
-    bool willHitRightEdge =
-        (enemy.pos.x + enemy.radius) >= rightEdge && direction.x > 0;
-    bool willHitLeftEdge =
-        (enemy.pos.x - enemy.radius) <= leftEdge && direction.x < 0;
-    if (willHitRightEdge || willHitLeftEdge) {
-      state.enemyDirection.x *= -1.0f;
-      needToMoveDown = true;
-      break;
-    }
-  }
-
-  if (needToMoveDown) {
-    for (Enemy& enemy : state.enemies) {
-      enemy.moveVertically(ENEMY_VERTICAL_MOVEMENT);
-      if (enemy.pos.y > GetScreenHeight()) {
-        state.player.health = 0;
-        break;
-      }
-    }
-    needToMoveDown = false;
-  }
-
-  for (Enemy& enemy : state.enemies) {
-    if (!enemy.active)
-      continue;
-
-    enemy.moveHorizontally(direction, speed, dt);
-  }
-}
-
-void DrawEnemies(const GameState& state) {
-  for (const Enemy& enemy : state.enemies) {
-    enemy.draw(state.resources.enemyTexture);
-  }
-}
-
 void CheckBulletEnemyCollisions(GameState& state) {
   for (Projectile& bullet : state.bullets) {
     if (!bullet.active)
       continue;
 
-    for (Enemy& enemy : state.enemies) {
+    for (Enemy& enemy : state.swarm.enemies) {
       if (!enemy.active)
         continue;
 
@@ -222,7 +143,7 @@ void CheckBulletEnemyCollisions(GameState& state) {
         PlaySound(state.resources.explosionSound);
         bullet.active = false;
         enemy.active = false;
-        state.activeEnemies--;
+        state.swarm.activeCount--;
         state.score += enemy.scoreValue;
       }
     }
@@ -230,7 +151,7 @@ void CheckBulletEnemyCollisions(GameState& state) {
 }
 
 void CheckPlayerEnemyCollisions(GameState& state) {
-  for (Enemy& enemy : state.enemies) {
+  for (Enemy& enemy : state.swarm.enemies) {
     if (!enemy.active)
       continue;
 
@@ -243,14 +164,15 @@ void CheckPlayerEnemyCollisions(GameState& state) {
 }
 
 std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
-  UpdateEnemies(state, dt);
+  if (state.swarm.update(dt))
+    state.player.health = 0;
   state.player.update(dt);
   PlayerShoot(state);
   UpdateProjectiles(state, dt);
   CheckBulletEnemyCollisions(state);
   CheckPlayerEnemyCollisions(state);
 
-  if (state.activeEnemies <= 0)
+  if (state.swarm.activeCount <= 0)
     state.victory = true;
   if (state.victory || state.player.health <= 0)
     return std::make_unique<SceneGameover>();
@@ -267,7 +189,7 @@ void SceneGameplay::draw(const GameState& state) const {
   int font_size = 20;
 
   state.player.draw(state.resources.playerTexture);
-  DrawEnemies(state);
+  state.swarm.draw(state.resources.enemyTexture);
   DrawProjectiles(state);
 
   DrawText(TextFormat("Health: %i", state.player.health), 20,
