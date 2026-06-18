@@ -27,8 +27,14 @@
 7. [LESSON DELIVERED L0007, awaiting apply] SceneManager class owns unique_ptr + transition
    bookkeeping; main shrinks to `scenes.tick(state, dt)`. Teaches invariant-pair-as-class,
    ctor establishes invariant (C.40/41), explicit single-arg ctor (C.46), link vs compile error.
+8. [DONE L0008] update() returns unique_ptr<Scene> -> killed makeScene switch + GameScene enum +
+   state.currentScene + shown_. Hurdle (see LR-0009): derived-header return types, deep-void-helper
+   condition pattern, double-update bug. Lesson patched to be self-contained.
+9. [LESSON DELIVERED L0009, awaiting apply] SRP: extract enemy Swarm class (reset/update/draw, new
+   swarm.h+.cpp), shrink GameState (4 fields -> Swarm member). Swarm::update returns bool breached
+   (scene decides death). Collisions stay FREE (C.4/C.5). Future SRP arcs: ProjectilePool, HUD overlay.
 Possible future arcs (confirm with user before starting a new mission):
-- [L8 teased] update() returns next scene -> removes the last (factory) switch + GameScene enum.
+- ProjectilePool class; HUD as own helper/overlay scene; collision system; per-scene state (pause).
 - Per-scene state as class members (pause menu, settings, level-complete).
 - Revisit the repo's original RL-environment goal (currently out of scope in MISSION.md).
 

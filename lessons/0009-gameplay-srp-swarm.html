@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 9 · One responsibility per class</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 09 · Refactor · Single Responsibility</span>
+<h1>The gameplay file knows too much</h1>
+<p class="subtitle"><code>scene_gameplay.cpp</code> has quietly become a god-file. Before extracting anything, learn to <em>name the responsibilities</em> tangled inside it — then lift exactly one out: the enemy swarm.</p>
+
+<h2>Step 1 — diagnose, don't refactor yet</h2>
+<p>Read your own file and list what it's responsible for. Right now one translation unit owns all of:</p>
+<ul>
+<li><strong>Entity behaviour</strong> — <code>Player::update</code>, <code>Projectile</code>, <code>Enemy</code> methods (already tidy, from lesson 5).</li>
+<li><strong>Swarm/wave logic</strong> — <code>InitEnemies</code>, <code>UpdateEnemies</code> (edge-bounce + descend), <code>DrawEnemies</code>.</li>
+<li><strong>Cross-entity collision</strong> — <code>CheckBulletEnemyCollisions</code>, <code>CheckPlayerEnemyCollisions</code>.</li>
+<li><strong>Scoring &amp; HUD</strong> — score/health text in <code>draw</code>.</li>
+<li><strong>Scene orchestration</strong> — <code>SceneGameplay::update</code>/<code>draw</code> (this is the file's <em>real</em> job).</li>
+</ul>
+<p>And look at <code>GameState</code> — four of its fields exist <em>only</em> to serve the swarm:</p>
+<pre><span class="cm">// game.h — today</span>
+typedef struct GameState {
+  Player player;
+  std::array&lt;Projectile, MAX_PROJECTILES&gt; bullets;
+  <span class="del">std::array&lt;Enemy, MAX_ENEMIES&gt; enemies;   // these four</span>
+  <span class="del">Vector2 enemyDirection;                   // move</span>
+  <span class="del">int enemySpeed;                           // together</span>
+  <span class="del">int activeEnemies;                        // always</span>
+  bool victory;
+  GameResources resources;
+  int score;
+} GameState;</pre>
+<p>Four fields that always change together, manipulated only by the <code>*Enemies</code> functions —
+that's the same "invariant cluster" smell from lessons 5 and 7. The
+<strong>Single Responsibility Principle</strong> says a module should have one reason to change.
+The swarm is its own reason. Give it its own class. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-org">Core Guidelines C.4 / C.8: group data with the operations that maintain its invariants</a>]</span></p>
+
+<div class="why">
+<h3>Scope discipline (lesson 8 taught us this the hard way)</h3>
+<p>You could extract <em>all</em> five responsibilities today. Don't. One extraction, build, play, commit —
+then the next. We lift <strong>only the swarm</strong> this lesson. Collisions, HUD, and the object pool
+stay put on purpose; they're noted as future arcs at the bottom.</p>
+</div>
+
+<h2>Step 2 — the <code>Swarm</code> class</h2>
+<p>A responsibility worth extracting earns its own files. The build already globs <code>src/*.cpp</code>,
+so new files need <em>no</em> Makefile change.</p>
+<pre><span class="cm">// NEW FILE: include/swarm.h</span>
+#pragma once
+#include "game.h"            <span class="cm">// for Enemy, MAX_ENEMIES</span>
+
+struct Swarm {
+  std::array&lt;Enemy, MAX_ENEMIES&gt; enemies{};
+  Vector2 direction{};
+  float   speed{};
+  int     activeCount{};
+
+  void reset();                              <span class="cm">// was InitEnemies</span>
+  <span class="hi">bool</span> update(float dt);                      <span class="cm">// was UpdateEnemies — returns "breached bottom?"</span>
+  void draw(const Texture2D&amp; texture) const; <span class="cm">// was DrawEnemies</span>
+};</pre>
+
+<div class="why">
+<h3>Why <code>update</code> returns a <code>bool</code> instead of touching the player</h3>
+<p>The old <code>UpdateEnemies</code> reached across and wrote <code>state.player.health = 0</code> when an
+enemy passed the bottom. That's the swarm reaching into the player's business — a fresh SRP violation
+inside the very code we're cleaning. Instead the swarm <em>reports a fact</em> ("I breached the bottom
+edge") and the <strong>scene decides the consequence</strong>. Same condition-up / decision-at-the-caller
+pattern you used in lesson 8. The <code>Swarm</code> now knows nothing about <code>Player</code>.</p>
+</div>
+
+<h2>Step 3 — move the bodies in (logic unchanged, just relocated)</h2>
+<pre><span class="cm">// NEW FILE: src/swarm.cpp</span>
+#include "swarm.h"
+#include "raylib.h"
+#include "raymath.h"
+
+<span class="cm">// the same constants the swarm needs (move these out of scene_gameplay.cpp)</span>
+constexpr int   MAX_ENEMIES_PER_ROW = 11;
+constexpr int   COL_PADDING = 80;
+constexpr int   ROW_PADDING = 60;
+constexpr float ENEMY_SPEED = 50.0f;
+constexpr float ENEMY_RADIUS = 15.0f;
+constexpr int   ENEMY_SCORE_VALUE = 100;
+constexpr float ENEMY_VERTICAL_MOVEMENT = ROW_PADDING / 2.0f;
+
+void Swarm::reset() {
+  activeCount = 0;
+  direction = {1.0f, 0.0f};
+  speed = ENEMY_SPEED;
+  Vector2 start = { ((GetScreenWidth() - (MAX_ENEMIES_PER_ROW * COL_PADDING)) / 2.0f)
+                    + (COL_PADDING / 2.0f), 100 };
+  for (int i = 0; i &lt; MAX_ENEMIES; i++) {
+    int col = i % MAX_ENEMIES_PER_ROW, row = i / MAX_ENEMIES_PER_ROW;
+    enemies[i] = { .pos = { start.x + col * COL_PADDING, start.y + row * ROW_PADDING },
+                   .radius = ENEMY_RADIUS, .scoreValue = ENEMY_SCORE_VALUE, .active = true };
+    activeCount++;
+  }
+}
+
+bool Swarm::update(float dt) {
+  bool needDown = false, breached = false;
+  int rightEdge = GetScreenWidth() - ENEMY_RADIUS, leftEdge = ENEMY_RADIUS;
+  for (Enemy&amp; e : enemies) {
+    if (!e.active) continue;
+    bool hitR = (e.pos.x + e.radius) &gt;= rightEdge &amp;&amp; direction.x &gt; 0;
+    bool hitL = (e.pos.x - e.radius) &lt;= leftEdge  &amp;&amp; direction.x &lt; 0;
+    if (hitR || hitL) { direction.x *= -1.0f; needDown = true; break; }
+  }
+  if (needDown)
+    for (Enemy&amp; e : enemies) {
+      e.moveVertically(ENEMY_VERTICAL_MOVEMENT);
+      if (e.pos.y &gt; GetScreenHeight()) { <span class="hi">breached = true;</span> break; }   <span class="cm">// report, don't act</span>
+    }
+  for (Enemy&amp; e : enemies)
+    if (e.active) e.moveHorizontally(direction, speed, dt);
+  return breached;
+}
+
+void Swarm::draw(const Texture2D&amp; texture) const {
+  for (const Enemy&amp; e : enemies) e.draw(texture);
+}</pre>
+
+<h2>Step 4 — shrink <code>GameState</code></h2>
+<pre><span class="cm">// game.h — after</span>
+#include "swarm.h"   <span class="cm">// or forward-declare; Swarm is a value member so full type is needed</span>
+...
+typedef struct GameState {
+  Player player;
+  std::array&lt;Projectile, MAX_PROJECTILES&gt; bullets;
+  <span class="add">Swarm swarm;          // replaces the four loose fields</span>
+  bool victory;
+  GameResources resources;
+  int score;
+} GameState;</pre>
+<blockquote><strong>Include cycle warning:</strong> <code>swarm.h</code> includes <code>game.h</code> (for
+<code>Enemy</code>), and <code>game.h</code> now needs <code>Swarm</code> complete (it's a by-value
+member). Two files including each other. Fix the ordering: define <code>Enemy</code> <em>before</em>
+<code>Swarm</code>, and since both live in headers guarded by <code>#pragma once</code>, put the
+<code>Swarm</code> struct directly in <code>game.h</code> <em>below</em> <code>Enemy</code> rather than a
+separate <code>swarm.h</code> — OR keep <code>swarm.h</code> but have it <code>#include "game.h"</code>
+and have <code>game.h</code> <strong>not</strong> include <code>swarm.h</code> (instead, <code>game.h</code>
+defines <code>Enemy</code>, then <code>swarm.h</code> defines <code>Swarm</code>, and <code>GameState</code>
+moves into <code>swarm.h</code> after both). Simplest that compiles: <strong>put <code>Swarm</code> in
+<code>game.h</code></strong> right after <code>Enemy</code>, keep the bodies in <code>src/swarm.cpp</code>.
+If you hit "incomplete type Swarm", this ordering is why.</blockquote>
+
+<h2>Step 5 — rewire <code>scene_gameplay.cpp</code></h2>
+<p>Delete <code>InitEnemies</code>, <code>UpdateEnemies</code>, <code>DrawEnemies</code> and their
+constants (they live in <code>swarm.cpp</code> now). Then:</p>
+<pre><span class="cm">// InitGameplay</span>
+void InitGameplay(GameState* state) {
+  state-&gt;score = 0;
+  state-&gt;victory = false;
+  <span class="add">state-&gt;swarm.reset();          // was: state->activeEnemies = 0; InitEnemies(state);</span>
+  InitPlayer(state);
+  InitBullets(state);
+}</pre>
+<pre><span class="cm">// collisions now reach through the swarm — they stay FREE functions (see box)</span>
+void CheckBulletEnemyCollisions(GameState&amp; state) {
+  for (Projectile&amp; bullet : state.bullets) {
+    if (!bullet.active) continue;
+    for (Enemy&amp; enemy : <span class="add">state.swarm.enemies</span>) {
+      if (!enemy.active) continue;
+      if (CheckCollisionCircles(bullet.pos, bullet.radius, enemy.pos, enemy.radius)) {
+        PlaySound(state.resources.explosionSound);
+        bullet.active = false; enemy.active = false;
+        <span class="add">state.swarm.activeCount--;</span>
+        state.score += enemy.scoreValue;
+      }
+    }
+  }
+}
+<span class="cm">// CheckPlayerEnemyCollisions: same — loop state.swarm.enemies, set player.health = 0 on hit</span></pre>
+<pre><span class="cm">// SceneGameplay::update — the scene owns the consequences</span>
+std::unique_ptr&lt;Scene&gt; SceneGameplay::update(GameState&amp; state, float dt) {
+  <span class="add">if (state.swarm.update(dt)) state.player.health = 0;   // breach → death decided HERE</span>
+  state.player.update(dt);
+  PlayerShoot(state);
+  UpdateProjectiles(state, dt);
+  CheckBulletEnemyCollisions(state);
+  CheckPlayerEnemyCollisions(state);
+
+  <span class="add">if (state.swarm.activeCount &lt;= 0) state.victory = true;</span>
+  if (state.victory || state.player.health &lt;= 0)
+    return std::make_unique&lt;SceneGameover&gt;();
+  return nullptr;
+}</pre>
+<pre><span class="cm">// SceneGameplay::draw</span>
+  state.player.draw(state.resources.playerTexture);
+  <span class="add">state.swarm.draw(state.resources.enemyTexture);   // was DrawEnemies(state);</span>
+  DrawProjectiles(state);</pre>
+
+<div class="why">
+<h3>Why collisions stay <em>free</em> functions (C.4 / C.5, callback to lesson 5)</h3>
+<p>A bullet-vs-enemy check belongs to <em>neither</em> the <code>Swarm</code> nor the bullet pool — it
+straddles both. Forcing it into one class would make that class reach into the other's data, recreating
+the coupling we're removing. The Core Guidelines are explicit: a function that needs the representation of
+<em>two</em> types should be a non-member. SRP isn't "make everything a method" — it's "each thing has one
+job." A free collision function whose one job is "mediate between bullets and the swarm" is correct. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-helper">C.5: place helper functions in the same namespace as the type they support</a>]</span></p>
+</div>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/game.h</code> — add <code>Swarm</code> struct (after <code>Enemy</code>); replace the four loose fields in <code>GameState</code> with <code>Swarm swarm;</code>.</li>
+<li><code>src/swarm.cpp</code> <strong>(new)</strong> — move <code>reset</code>/<code>update</code>/<code>draw</code> bodies + the enemy constants here.</li>
+<li><code>src/scene_gameplay.cpp</code> — delete the three <code>*Enemies</code> functions + enemy constants; rewire <code>InitGameplay</code>, both collision fns (<code>state.swarm.enemies</code>, <code>activeCount</code>), <code>update</code> (breach + victory), and <code>draw</code>.</li>
+<li>No Makefile change — <code>src/*.cpp</code> is globbed.</li>
+<li>Build &amp; play full cycle: shoot enemies (score++, activeCount→victory), let swarm reach bottom (death), player-enemy touch (death), restart.</li>
+</ol>
+
+<blockquote><strong>Traps to expect:</strong> (1) "incomplete type <code>Swarm</code>" → header ordering, see the
+Step-4 box. (2) Leftover references to <code>state.enemies</code>/<code>state.activeEnemies</code> anywhere
+→ grep for them; all become <code>state.swarm.*</code>. (3) Forgetting <code>swarm.reset()</code> in
+<code>InitGameplay</code> → restart spawns an empty wave and you instantly "win".</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="1">
+  <div class="q">What signals that the four enemy fields belong in their own class?</div>
+  <button data-fb="No — field count alone says nothing; small structs are fine.">There are more than three of them together</button>
+  <button data-fb="Right — they change together and only the swarm code touches them: one responsibility.">They always change together and serve one responsibility</button>
+  <button data-fb="No — being in GameState isn't the problem; the coupling is.">Any field inside GameState should be extracted</button>
+  <button data-fb="No — arrays don't need wrapping; the cohesion does.">They include a std::array, which needs a wrapper</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why does <code>Swarm::update</code> return a <code>bool</code> rather than set the player's health?</div>
+  <button data-fb="No — returning a bool isn't faster; it's about responsibility.">Returning a value runs faster than a write</button>
+  <button data-fb="No — the swarm could hold a Player&, but that's exactly the coupling we avoid.">The swarm has no access to the player object</button>
+  <button data-fb="Right — the swarm reports a fact; the scene owns the consequence. No swarm→player coupling.">So the scene decides the consequence and swarm stays decoupled</button>
+  <button data-fb="No — bool vs void doesn't affect the virtual scene interface at all.">Because update must match the Scene base signature</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why does <code>CheckBulletEnemyCollisions</code> stay a free function?</div>
+  <button data-fb="Exactly — it needs both bullets and the swarm; a non-member avoids coupling either class to the other.">It mediates two types, so it belongs to neither class</button>
+  <button data-fb="No — free functions aren't inherently faster than members here.">Free functions are faster than member functions</button>
+  <button data-fb="No — it could be a member syntactically; the design reason is coupling, not capability.">A member function cannot access two different structs</button>
+  <button data-fb="No — SRP doesn't forbid methods; it's about one job per unit.">SRP requires all collision logic to be non-member</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#S-class">Core Guidelines — C: Classes</a>
+(C.1 organise related data into structures, C.4 make a function a member only if it needs the representation, C.5 helpers as non-members).
+For SRP itself, Robert C. Martin's <a href="https://blog.cleancoder.com/uncle-bob/2014/05/08/SingleReponsibilityPrinciple.html">"a module should have one reason to change."</a> See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: should <code>Swarm</code> own its own collision against
+bullets (and is that different from player collision)? Should the object-pool pattern in
+<code>bullets</code> become a <code>ProjectilePool</code> class next? Should the HUD move into its own
+draw helper or even its own overlay scene? Each is a future SRP arc — we did one today on purpose.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0008-update-returns-next.html">Lesson 08: update returns next</a></span>
+  <span>One file, one job. Next candidates: ProjectilePool · HUD · collision system.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 09 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
