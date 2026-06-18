@@ -109,13 +109,40 @@ exposing <em>what you can do</em>, not <em>what it is</em>. That's the line betw
 representation.</p>
 </div>
 
+<h2>One level up: stop reaching through <code>.pool</code></h2>
+<p>You hid <code>Pool</code>'s array — but look at the collision loops now: <code>for (Enemy&amp; e :
+state.swarm<span class="hi">.pool</span>)</code>. The caller still reaches <em>through</em> the
+<code>Swarm</code> into its <code>pool</code> member. That's the same Law-of-Demeter poke, one level out:
+the scene shouldn't need to know a <code>Swarm</code> is implemented <em>with</em> a <code>Pool</code>.
+Apply the exact principle again — let the owner forward iteration:</p>
+<pre><span class="cm">// swarm.h (and the same four lines in projectile_pool.h)</span>
+  <span class="add">auto begin()       { return pool.begin(); }</span>
+  <span class="add">auto end()         { return pool.end(); }</span>
+  <span class="add">auto begin() const { return pool.begin(); }</span>
+  <span class="add">auto end()   const { return pool.end(); }</span></pre>
+<pre><span class="cm">// scene_gameplay.cpp — iterate the swarm/pool directly, not its internals</span>
+for (Projectile&amp; bullet : <span class="add">state.projectilePool</span>) { ... }   <span class="cm">// was state.projectilePool.pool</span>
+for (Enemy&amp; enemy : <span class="add">state.swarm</span>) { ... }                  <span class="cm">// was state.swarm.pool  (×2)</span></pre>
+<p>Now <code>for (e : swarm)</code> reads as plain intent, and the scene depends only on "a swarm is
+iterable," not on how it stores enemies. If <code>Swarm</code> later swaps <code>Pool</code> for something
+else, the collision code doesn't care. Same lesson, one layer higher — encapsulation composes.</p>
+
+<div class="why">
+<h3>Is forwarding worth the boilerplate?</h3>
+<p>It's four trivial lines per owner to remove a dependency on an implementation detail. For a type whose
+whole job is "hold a collection" (<code>Swarm</code>, <code>ProjectilePool</code>), making it iterable is
+honest — it <em>is</em> a sequence of things. The judgment flips for a type where iteration isn't part of
+its identity: don't bolt <code>begin/end</code> onto something just to save a dot. Here it fits.</p>
+</div>
+
 <h2>Files you'll touch (checklist)</h2>
 <ol class="steps">
 <li><code>include/pool.h</code> — add <code>begin/end</code> (×2 const) and <code>operator[]</code> (×2 const); switch <code>struct</code>→<code>class</code> with <code>public:</code>/<code>private:</code>; move <code>items</code> under <code>private:</code>.</li>
 <li><code>src/swarm.cpp</code> — <code>pool.items[i]</code>→<code>pool[i]</code>; the two break-loops <code>: pool.items</code>→<code>: pool</code>.</li>
 <li><code>src/projectile_pool.cpp</code> — <code>reset()</code>'s loop <code>: pool.items</code>→<code>: pool</code>.</li>
 <li><code>src/scene_gameplay.cpp</code> — the three collision loops <code>.pool.items</code>→<code>.pool</code>.</li>
-<li>Build &amp; play full cycle — behaviour identical; <code>items</code> now unreachable from outside.</li>
+<li><strong>Demeter coda:</strong> add the four forwarding <code>begin/end</code> lines to <code>swarm.h</code> and <code>projectile_pool.h</code>; then drop the <code>.pool</code> from the three collision loops (<code>state.swarm</code>, <code>state.projectilePool</code>).</li>
+<li>Build &amp; play full cycle — behaviour identical; <code>items</code> now unreachable from outside, and the scene no longer names <code>.pool</code>.</li>
 </ol>
 
 <blockquote><strong>Traps:</strong> (1) Provide the <code>const</code> overloads of <code>begin/end</code> or
