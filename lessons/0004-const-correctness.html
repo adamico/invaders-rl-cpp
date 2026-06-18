@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 4 · const-correctness</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 04 · Refactor</span>
+<h1>Say what won't change</h1>
+<p class="subtitle">A small, safe step before classes: mark the read-only code <code>const</code> so the compiler enforces the difference between "looks at" and "changes."</p>
+
+<h2>The idea</h2>
+<p><code>const</code> is a promise to the compiler — and to the next reader — that a thing won't be
+modified. Used well, it turns a whole category of bugs into compile errors: if you accidentally write
+to something you meant only to read, the build fails instead of the game misbehaving. It's also
+<em>documentation that can't go stale</em>: a function signature with <code>const</code> tells you,
+at a glance, whether it mutates.
+<span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Con-const">Core Guidelines: Con — constants and immutability</a>]</span></p>
+
+<div class="why">
+<h3>Why now, why this matters for classes</h3>
+<p>Next lesson your draw functions become <em>methods</em>: <code>enemy.draw()</code>. A draw method must
+be a <strong>const method</strong> — <code>void draw() const</code> — meaning "calling this can't change
+the enemy." You can't write correct const methods if you haven't internalised which operations are
+read-only. This lesson builds that instinct on the code you already have.</p>
+</div>
+
+<h2>Two places to apply it</h2>
+
+<h3>1 — Read-only range-for loops</h3>
+<p>Your draw and scan loops only read each element. Say so:</p>
+<pre><span class="cm">// DrawEnemies — reads pos/active, never writes</span>
+<span class="del">- for (Enemy& enemy : state-&gt;enemies)</span>
+<span class="add">+ for (const Enemy& enemy : state-&gt;enemies)</span>
+</pre>
+<p>Still a reference (no copy, no overhead) — but now <code>const</code>. If a future edit tries
+<code>enemy.active = false</code> inside that loop, the compiler stops you. The loops that <em>do</em>
+mutate (movement, collisions) keep plain <code>Enemy&amp;</code>. The <code>const</code> is what
+distinguishes them at a glance.</p>
+
+<h3>2 — Pointers that only read state</h3>
+<p>Several functions take <code>GameState* state</code> but never modify it — they only inspect.
+<code>DrawEnemies</code>, <code>DrawProjectiles</code>, <code>DrawPlayer</code>, <code>DrawGameplay</code>
+are pure readers. Mark the pointee <code>const</code>:</p>
+<pre><span class="del">- void DrawEnemies(GameState* state)</span>
+<span class="add">+ void DrawEnemies(const GameState* state)</span></pre>
+<p>Read it right-to-left: "<code>state</code> is a pointer to a <code>const GameState</code>" — you may
+follow the pointer and read, but not write through it. Try <code>state-&gt;score = 0</code> inside and
+the build fails. (Update the matching declarations in <code>scene_gameplay.h</code> too.)</p>
+
+<blockquote><strong>The distinction to feel:</strong> <code>const GameState* state</code> = can't change
+what it points to (the game). <code>GameState* const state</code> = can't repoint it, but can change
+the game. You want the <em>first</em> for read-only functions. The <code>const</code> goes left of the
+<code>*</code>.</blockquote>
+
+<h2>Your task <span class="tag">feedback loop</span></h2>
+<ol class="steps">
+<li>Add <code>const</code> to the loop variable in every <strong>read-only</strong> range-for: the draw loops, and any scan that doesn't write. Leave mutating loops as plain <code>&amp;</code>.</li>
+<li>Change the four <code>Draw*</code> functions to take <code>const GameState*</code> — both the definition and the declaration in the header.</li>
+<li>Build. <strong>Let the compiler teach you:</strong> if a function you marked <code>const</code> actually writes somewhere, you'll get an error pointing at the exact line. That's a real finding — either the <code>const</code> is wrong, or that write shouldn't be there.</li>
+<li>Play the game. Behaviour is identical — <code>const</code> changes nothing at runtime. The win is entirely at compile time.</li>
+</ol>
+
+<blockquote><strong>If the build fails inside a <code>Draw*</code> function:</strong> read what it's
+writing. <code>DrawText(TextFormat(...))</code> only reads — fine. But if you find a draw function
+sneakily mutating state, you've just discovered a design smell the <code>const</code> exposed. Tell me
+what you found.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="1">
+  <div class="q">What does <code>const GameState* state</code> forbid?</div>
+  <button data-fb="No — you can still read everything through the pointer; reading is the point.">Reading any field of the game state</button>
+  <button data-fb="Right — the pointee is const, so writes through the pointer are rejected.">Writing to the game state through that pointer</button>
+  <button data-fb="No — that's GameState* const (const pointer). This const is on the pointee.">Pointing state at a different object</button>
+  <button data-fb="No — const has zero runtime cost; nothing is copied.">Passing state without copying it first</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why mark a draw method <code>void draw() const</code> next lesson?</div>
+  <button data-fb="Exactly — a const method promises it won't modify the object it's called on.">It promises the call won't modify the object</button>
+  <button data-fb="No — const methods aren't faster; the promise is about mutation, not speed.">It makes the method run faster each frame</button>
+  <button data-fb="No — const is unrelated to how often a method may be called.">It lets the method be called only once</button>
+  <button data-fb="No — const doesn't allocate or free anything.">It frees the object's memory after drawing</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#S-const">C++ Core Guidelines — Con: Constants and immutability</a>.
+Read Con.1–Con.3: "by default, make objects immutable," and "pass pointers/refs to const unless you
+need to modify." Short, and it's the rule we're applying. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> The right-to-left reading of pointer <code>const</code> is genuinely
+confusing at first — if <code>const GameState* const</code> makes your eyes cross, ask and I'll break
+it down. Also worth asking: should these readers take <code>const GameState&amp;</code> (reference)
+instead of a pointer? That's the more idiomatic C++ — a good question to raise before lesson 5.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0003-range-for-std-array.html">Lesson 03: range-for &amp; std::array</a></span>
+  <span>Next up: <strong>entity classes</strong> — Player/Enemy/Projectile own update + draw →</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 04 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

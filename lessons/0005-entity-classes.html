@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 5 · Entity classes</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 05 · Refactor</span>
+<h1>Give the bullet its own behaviour</h1>
+<p class="subtitle">The big structural shift — but one entity at a time. <code>Projectile</code> stops being a passive bag of data and starts owning what it does.</p>
+
+<h2>The shift in one sentence</h2>
+<p>Right now data lives in <code>struct Projectile</code> and behaviour lives in free functions
+(<code>UpdateProjectiles</code>, the draw loop) that reach into that data. <strong>OOP co-locates
+them:</strong> the data and the code that acts on it live in the same class. The bullet knows how to
+move itself and draw itself.</p>
+
+<div class="why">
+<h3>Why this serves the mission</h3>
+<p>"Better-structured" means behaviour lives next to the data it touches, so adding a new bullet type
+or tweaking movement is a local change in one class — not a hunt through free functions that all take
+<code>GameState*</code>. This is the structural payoff everything so far was setting up: RAII gave you
+safe ownership, const-correctness gave you <code>draw() const</code>, range-for cleaned the loops that
+will now call methods.</p>
+</div>
+
+<h2>From struct + functions to a class</h2>
+<p>Today, in <code>game.h</code>:</p>
+<pre>struct Projectile {
+  Vector2 pos; Vector2 dir; float speed; float radius; bool active;
+};</pre>
+<p>And the behaviour, scattered, in <code>scene_gameplay.cpp</code>:</p>
+<pre>void UpdateProjectiles(GameState* state, float dt) {
+  for (Projectile& b : state-&gt;bullets) {
+    if (!b.active) continue;
+    b.pos = Vector2Add(b.pos, Vector2Scale(b.dir, b.speed * dt));
+    b.active = b.pos.y &gt; 0;
+  }
+}</pre>
+
+<p>The move: put the <em>per-bullet</em> behaviour <strong>inside</strong> the class as
+<strong>member functions</strong>. The loop stays outside (it's about the collection); the work for
+one bullet moves in.</p>
+
+<pre><span class="cm">// game.h</span>
+struct Projectile {
+  Vector2 pos{};
+  Vector2 dir{};
+  float speed{};
+  float radius{};
+  bool active{};
+
+  <span class="add">void update(float dt);                 // moves one bullet, deactivates off-screen</span>
+  <span class="add">void draw(const Texture2D&amp; tex) const; // draws one bullet; const = won't mutate it</span>
+};</pre>
+
+<blockquote><strong>Why still <code>struct</code>, not <code>class</code>?</strong> In C++ they're
+nearly identical — the only difference is default access (<code>struct</code> = public,
+<code>class</code> = private). Since these are simple data-forward entities with public fields, keeping
+<code>struct</code> is idiomatic and fine. Don't let anyone tell you methods require the
+<code>class</code> keyword — they don't.</blockquote>
+
+<h3>The definitions, in <code>scene_gameplay.cpp</code></h3>
+<pre><span class="cm">// note the Projectile:: prefix — same idea as GameResources:: in lesson 1</span>
+void Projectile::update(float dt) {
+  if (!active) return;
+  pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
+  active = pos.y &gt; 0;
+}
+
+void Projectile::draw(const Texture2D&amp; tex) const {
+  if (!active) return;
+  DrawOffset(tex, pos, WHITE);
+  DrawCircleLinesV(pos, radius, RED);
+}</pre>
+
+<p>Inside a member function, <code>pos</code>/<code>active</code>/etc. refer to <em>this</em> object's
+fields — no <code>state-&gt;</code>, no parameter. That implicit "this object" is the whole point:
+the method already knows which bullet it's working on.</p>
+
+<h3>The loops shrink to calls</h3>
+<pre>void UpdateProjectiles(GameState* state, float dt) {
+  for (Projectile&amp; b : state-&gt;bullets) b.update(dt);
+}
+void DrawProjectiles(const GameState* state) {
+  for (const Projectile&amp; b : state-&gt;bullets)
+    b.draw(state-&gt;resources.laserTexture);
+}</pre>
+<p>The <code>const&amp;</code> in the draw loop now <em>requires</em> <code>draw()</code> to be a const
+method — a non-const method can't be called on a const reference. That's lesson 4 paying off:
+<code>draw() const</code> and <code>const Projectile&amp;</code> fit together like a key in a lock.</p>
+
+<h2>Your task <span class="tag">feedback loop</span></h2>
+<ol class="steps">
+<li>Add the two method declarations to <code>Projectile</code> in <code>game.h</code>.</li>
+<li>Move the bullet update logic and the bullet draw logic into <code>Projectile::update</code> / <code>Projectile::draw</code> in the <code>.cpp</code>.</li>
+<li>Replace the bodies of <code>UpdateProjectiles</code> / <code>DrawProjectiles</code> with the one-line loops that call the methods.</li>
+<li>Build &amp; play. Bullets fire, move, vanish off-screen exactly as before.</li>
+<li><strong>Stop there.</strong> Do <em>not</em> touch Enemy or Player yet — prove the pattern on one entity first. Once it works, the other two are the same move.</li>
+</ol>
+
+<blockquote><strong>Decision point:</strong> <code>PlayerShoot</code> sets a bullet's fields directly to
+fire it. Leave that for now, or — if you want — add a <code>Projectile::spawn(Vector2 from)</code>
+method so the bullet owns its own initialisation too. Your call; tell me which way you lean and why.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Inside <code>Projectile::update</code>, what does the bare name <code>pos</code> refer to?</div>
+  <button data-fb="No — there's no GameState involved inside the method anymore.">The global game state's position</button>
+  <button data-fb="No — there's no parameter named pos; it's a member.">A parameter passed into update</button>
+  <button data-fb="Right — it's this particular object's pos field, implicitly.">The pos field of the object it's called on</button>
+  <button data-fb="No — a fresh local would shadow nothing here; pos is the member.">A new local variable created each call</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why must <code>draw()</code> be a const method to use it in the draw loop?</div>
+  <button data-fb="Exactly — a const reference only permits calling methods that promise not to mutate.">The loop holds a const&amp;, which forbids mutating calls</button>
+  <button data-fb="No — const methods have identical speed; it's a correctness promise.">Const methods render faster on the GPU</button>
+  <button data-fb="No — struct vs class default access is unrelated to this.">Because struct members are private by default</button>
+  <button data-fb="No — draw can read every field; const only blocks writing them.">Because draw is not allowed to read fields</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#S-class">C++ Core Guidelines — C: Classes and class hierarchies</a>.
+Read C.1 ("organize related data into structures") and C.4 ("make a function a member only if it needs
+direct access to the representation"). That second one is the judgment call you're making here. See
+<a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions to raise: should <code>update</code> take the whole
+<code>GameState</code> when an entity needs to see others (enemies checking edges)? When does a free
+function beat a method (C.4)? Should fields become <code>private</code> with accessors, or stay public
+for these simple entities? That last one is a real design fork worth discussing before you do Enemy.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0004-const-correctness.html">Lesson 04: const-correctness</a></span>
+  <span>Next up: <strong>Enemy &amp; Player</strong> follow the same pattern, then scene polymorphism →</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 05 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
