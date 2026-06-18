@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 8 · update returns the next scene</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 08 · Refactor · Kill the last switch</span>
+<h1>Let a scene name its own successor</h1>
+<p class="subtitle">The factory <code>switch</code> in <code>makeScene</code> and the whole <code>GameScene</code> enum exist for one reason: to turn a <em>label</em> back into a <em>scene object</em>. What if <code>update</code> just handed back the next scene directly?</p>
+
+<h2>The indirection you're paying for</h2>
+<p>Today a transition is a three-step dance:</p>
+<pre>1. a scene writes   state.currentScene = GameScene::GAMEPLAY;   <span class="cm">// label</span>
+2. SceneManager sees the label changed
+3. makeScene(label)  switch → make_unique&lt;SceneGameplay&gt;()        <span class="cm">// label → object</span></pre>
+<p>The enum is a <strong>stand-in</strong> for "which scene object to build." But the scene already knows
+exactly where it wants to go — it just isn't allowed to say so directly. Remove the middleman: let
+<code>update</code> <strong>return the next scene</strong>, or nothing if it wants to stay.</p>
+
+<h2>The tool: return a <code>unique_ptr</code>, use <code>nullptr</code> as "stay"</h2>
+<pre><span class="cm">// scene.h</span>
+struct Scene {
+  <span class="add">virtual std::unique_ptr&lt;Scene&gt; update(GameState&amp; state, float dt) = 0;</span>
+  virtual void draw(const GameState&amp; state) const = 0;
+  virtual ~Scene() = default;
+};</pre>
+<p>The return value carries the decision: a non-null pointer means "replace me with this"; <code>nullptr</code>
+means "no transition, keep running me." Returning a <code>unique_ptr</code> <em>by value</em> moves
+ownership out of the function — the same move you already trust from <code>makeScene</code>, now done
+per-scene. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-return">Core Guidelines F.20: prefer returning a value to writing through an out-parameter</a>]</span></p>
+
+<pre><span class="cm">// scene_title.cpp — was: state.currentScene = GameScene::GAMEPLAY;</span>
+std::unique_ptr&lt;Scene&gt; SceneTitle::update(GameState&amp; state, float) {
+  if (IsKeyPressed(KEY_SPACE)) <span class="add">return std::make_unique&lt;SceneGameplay&gt;();</span>
+  <span class="add">return nullptr;</span>   <span class="cm">// stay on the title</span>
+}</pre>
+
+<p><code>SceneManager::tick</code> collapses — no more <code>shown_</code> mirror, no transition compare:</p>
+<pre>void SceneManager::tick(GameState&amp; state, float dt) {
+  <span class="add">if (auto next = current_-&gt;update(state, dt))   // truthy = a scene was returned</span>
+    <span class="add">current_ = std::move(next);                 // move-assign: old deleted, new installed</span>
+  current_-&gt;draw(state);
+}</pre>
+<p>The class drops to a single member, <code>current_</code>. <code>shown_</code> is gone because there's
+nothing to keep in sync anymore — the transition <em>is</em> the return value, atomic by construction.</p>
+
+<div class="why">
+<h3>Trap: the <code>if</code> line <em>is</em> the update call — don't call it twice</h3>
+<p><code>if (auto next = current_-&gt;update(state, dt))</code> already runs <code>update</code> once this
+frame and captures what it returned. A leftover second <code>current_-&gt;update(state, dt)</code> before
+<code>draw</code> double-steps your simulation — every entity moves twice per frame, so the player appears
+to move at <em>double speed</em>. The body is exactly three lines: the <code>if</code>, the move inside it,
+and <code>draw</code>. Nothing else.</p>
+</div>
+
+<h2>Transitions triggered deep in the call tree</h2>
+<p>Here's the part the obvious examples skip. Your gameplay scene doesn't decide "game over" in
+<code>update</code> directly — it's detected inside helpers like <code>UpdateEnemies</code> and
+<code>CheckPlayerEnemyCollisions</code>, which return <code>void</code>. A <code>void</code> helper
+buried two calls deep <strong>cannot return a scene</strong> up to <code>update</code>. So don't try.</p>
+<p>Split the two jobs: <strong>helpers mutate <em>condition state</em>; only <code>update</code> returns a
+scene.</strong> A helper that used to write <code>state.currentScene = GAMEOVER</code> instead sets the
+underlying <em>condition</em> (e.g. <code>state.player.health = 0</code>, or a <code>state.victory</code>
+flag). Then <code>update</code> — the one function that owns the return type — reads those conditions
+<em>after</em> running the frame and produces the successor at a single decision point:</p>
+<pre>std::unique_ptr&lt;Scene&gt; SceneGameplay::update(GameState&amp; state, float dt) {
+  state.player.update(dt);
+  UpdateEnemies(state, dt);              <span class="cm">// may set health = 0 (death) internally</span>
+  PlayerShoot(state);
+  UpdateProjectiles(state, dt);
+  CheckBulletEnemyCollisions(state);
+  CheckPlayerEnemyCollisions(state);     <span class="cm">// may set health = 0 internally</span>
+
+  <span class="add">if (state.activeEnemies &lt;= 0) state.victory = true;       // win condition</span>
+  <span class="add">if (state.victory || state.player.health &lt;= 0)            // ONE decision point</span>
+    <span class="add">return std::make_unique&lt;SceneGameover&gt;();</span>
+  <span class="add">return nullptr;                                          // otherwise: stay</span>
+}</pre>
+<blockquote><strong>Why not a helper that returns the scene?</strong> You could make
+<code>CheckPlayerEnemyCollisions</code> return <code>unique_ptr&lt;Scene&gt;</code> too and bubble it up —
+but then <em>every</em> helper's signature changes and <code>update</code> becomes a chain of
+"if a helper returned something, return that." Conditions-in-state keeps the helpers simple and the
+transition logic in one readable place. And beware the failure that compiles but misbehaves: a helper
+like <code>std::unique_ptr&lt;Scene&gt; check(...)</code> that only returns inside an <code>if</code> and
+<strong>falls off the end</strong> on the other path is undefined behaviour — every control path must
+return.</blockquote>
+
+<h2>What gets deleted</h2>
+<ul>
+<li><code>makeScene</code> and its <code>switch</code> — gone entirely. That empties <code>src/scene.cpp</code>: <strong>delete the file</strong> (the build globs <code>src/*.cpp</code>, so no Makefile edit needed). <code>scene.h</code> stays — it still declares the <code>Scene</code> base.</li>
+<li>The <code>GameScene</code> enum — gone from <code>game.h</code> (nothing references a scene by label now).</li>
+<li><code>state.currentScene</code> the field — gone from <code>GameState</code> in <code>game.h</code>.</li>
+<li><code>SceneManager::shown_</code> — gone. The header collapses to one member:</li>
+</ul>
+<pre><span class="cm">// scene_manager.h — final shape</span>
+class SceneManager {
+public:
+  <span class="add">explicit SceneManager(std::unique_ptr&lt;Scene&gt; first);</span>
+  void tick(GameState&amp; state, float dt);
+private:
+  std::unique_ptr&lt;Scene&gt; current_;   <span class="cm">// shown_ deleted</span>
+};</pre>
+<pre><span class="cm">// scene_manager.cpp — ctor takes the object, no label, no mirror</span>
+SceneManager::SceneManager(std::unique_ptr&lt;Scene&gt; first)
+  : current_(std::move(first)) {}</pre>
+<p>The ctor now takes the first scene as an object, not a label:</p>
+<pre><span class="cm">// main.cpp</span>
+<span class="add">SceneManager scenes(std::make_unique&lt;SceneTitle&gt;());</span>
+while (!WindowShouldClose()) scenes.tick(state, GetFrameTime());</pre>
+
+<div class="why">
+<h3>The honest trade-off — read before you decide you like this</h3>
+<p>Lesson 6 centralised "what scenes exist" into one factory <code>switch</code> — one place to look. This
+lesson <strong>distributes</strong> that knowledge: <code>SceneTitle</code> now <code>#include</code>s and
+names <code>SceneGameplay</code>; <code>SceneGameover</code> names <code>SceneTitle</code>. Each scene is
+coupled to its successors. Is that better? It depends what you value: the factory had <em>low coupling,
+central knowledge</em>; this has <em>high cohesion</em> (a scene fully owns its own transitions) at the
+cost of <em>scene-to-scene coupling</em>. For a small linear flow it's a clear win — the title genuinely
+does know it leads to gameplay. For a large graph of scenes that all jump to each other, the central
+factory may age better. Neither is "correct"; recognising the axis is the skill.</p>
+</div>
+
+<div class="why">
+<h3>The include trap this creates</h3>
+<p><code>SceneTitle</code>'s header doesn't need <code>SceneGameplay</code> — but its <code>.cpp</code> does,
+because <code>make_unique&lt;SceneGameplay&gt;()</code> needs the <strong>complete type</strong> to construct
+it. Keep the <code>#include "scene_gameplay.h"</code> in <code>scene_title.cpp</code>, not the header, to
+avoid include cycles (Title→Gameplay→… ) and keep headers light. Returning <code>unique_ptr&lt;Scene&gt;</code>
+only needs <code>Scene</code> to be complete, which <code>scene.h</code> already gives you. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rs-implementation">SF.10 / general: include what you use, in the .cpp where possible</a>]</span></p>
+</div>
+
+<h2>Why <code>nullptr</code> and not <code>std::optional</code>?</h2>
+<p>A <code>unique_ptr</code> is <em>already</em> nullable — it has a built-in empty state that means exactly
+"no object." Wrapping it in <code>std::optional&lt;unique_ptr&lt;Scene&gt;&gt;</code> would give you two ways
+to say "nothing" (empty optional vs null pointer) — redundant and confusing. Use <code>optional</code> when
+a type has <em>no</em> natural empty value (an <code>int</code>, a <code>Vector2</code>). A pointer isn't
+one of those. <span class="cite">[<a href="https://en.cppreference.com/w/cpp/utility/optional">cppreference: optional</a>]</span></p>
+
+<h2>Your task <span class="tag">feedback loop</span></h2>
+<ol class="steps">
+<li>Change <code>Scene::update</code>'s return type to <code>std::unique_ptr&lt;Scene&gt;</code> in <code>scene.h</code> and every override.</li>
+<li>In each scene's <code>update</code>: <code>return make_unique&lt;NextScene&gt;()</code> where it used to set the enum; <code>return nullptr</code> otherwise. Add the successor's <code>#include</code> to the <code>.cpp</code>.</li>
+<li>Rewrite <code>SceneManager::tick</code> to the <code>if (auto next = …) current_ = std::move(next);</code> form. Delete <code>shown_</code> and change the ctor to take <code>std::unique_ptr&lt;Scene&gt;</code>.</li>
+<li>Delete <code>makeScene</code> → empties <code>src/scene.cpp</code>, so <code>rm src/scene.cpp</code>. Delete the <code>GameScene</code> enum and the <code>state.currentScene</code> field from <code>game.h</code>. Also update each scene <strong>header</strong>'s <code>update</code> return type — not just the <code>.cpp</code> (the headers declare it too).</li>
+<li>In <code>main</code>: <code>SceneManager scenes(std::make_unique&lt;SceneTitle&gt;());</code>.</li>
+<li>Build &amp; play the full cycle. <strong>Watch the restart path</strong> — see the trap.</li>
+</ol>
+
+<blockquote><strong>Restart trap:</strong> <code>SceneGameover::update</code> used to do two things — reset
+state (<code>InitGameplay</code>) <em>and</em> switch to title. Keep both: call <code>InitGameplay(&amp;state)</code>
+<em>then</em> <code>return std::make_unique&lt;SceneTitle&gt;();</code>. If you only return the scene and drop
+the reset, restart shows a title over a dead game state. <strong>Lifetime trap:</strong> after
+<code>current_ = std::move(next)</code> the old scene (i.e. <code>this</code> inside the running
+<code>update</code>) is deleted — so don't touch any member of the old scene <em>after</em> returning the
+new one. You already return last, so you're fine; just know why.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">What does returning <code>nullptr</code> from <code>update</code> mean?</div>
+  <button data-fb="No — null means stay; it never tears down the running scene.">Destroy the current scene immediately</button>
+  <button data-fb="No — the game keeps running; null is the normal every-frame case.">Quit the game and close the window</button>
+  <button data-fb="Right — no successor returned, so the manager keeps the current scene.">No transition — keep running the current scene</button>
+  <button data-fb="No — there's no enum anymore; the pointer itself carries the decision.">Fall back to the default GameScene enum value</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why does <code>scene_title.cpp</code> need <code>scene_gameplay.h</code> but the header doesn't?</div>
+  <button data-fb="Exactly — make_unique<SceneGameplay> needs the complete type; the header only returns a Scene pointer.">make_unique needs the complete type; the return only needs Scene</button>
+  <button data-fb="No — headers can include other headers; that's not the rule at play.">Headers are forbidden from including other headers</button>
+  <button data-fb="No — virtual dispatch doesn't require the successor's definition anywhere special.">Virtual calls require the definition in the header</button>
+  <button data-fb="No — unique_ptr return doesn't force the pointee to be complete in the header.">Returning a unique_ptr needs the full successor type</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <div class="q">What's the real cost of this refactor versus the L6 factory?</div>
+  <button data-fb="No — it removes the switch; runtime cost is unchanged or lower.">It runs slower because of the extra return</button>
+  <button data-fb="Right — each scene now knows (and includes) its successors: more coupling, more cohesion.">Scenes become coupled to the successors they name</button>
+  <button data-fb="No — the virtual destructor is untouched and still correct.">It reintroduces the double-delete risk from null ptrs</button>
+  <button data-fb="No — unique_ptr still guarantees single ownership; no leak is introduced.">Scenes can now leak because ownership is unclear</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-return">Core Guidelines F.20 (return by value)</a>
+and <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rr-make_unique">R.23/C.150 (make_unique)</a>. For the design axis,
+<a href="https://gameprogrammingpatterns.com/state.html">Game Programming Patterns — State</a> contrasts the
+enum-state machine with object states exactly as this lesson does. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: with the enum gone, how would you serialise "which scene
+is active" for a save file? Should transitions that need <em>data</em> (e.g. "gameover with final score")
+pass it through the successor's constructor? And — the fixed-timestep split from lesson 7: now that
+<code>update</code> returns a scene, how does that interact with running <code>update</code> multiple times
+per frame?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0007-scene-manager.html">Lesson 07: SceneManager</a></span>
+  <span>The last switch is dead. 🗡️</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 08 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
