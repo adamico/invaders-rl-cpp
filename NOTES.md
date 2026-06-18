@@ -61,9 +61,17 @@
     const overloads, 4 do-to-all loops converted; break-early loops (edge/breach) + reset correctly
     left raw. [&] capture. One pass, working. See LR-0016. Mechanics arc (fn templates -> class
     templates -> lambdas) well covered.
+16. [DONE L0016] Encapsulation capstone — Pool::items now PRIVATE behind container interface
+    (begin/end +const, operator[] +const, struct->class). 5 sites converted. NEW mechanics: range-for
+    protocol, operator overloading, struct-vs-class. Hiccups: (a) misread collapsed-body `;` shorthand
+    as "split to .cpp" - clarified templates are header-only; (b) missed scene_gameplay:122 -> private
+    error (the expected proof). See LR-0017.
+LESSON-WRITING FEEDBACK: in "final shape" summary blocks, DON'T abbreviate template method bodies to a
+bare `;` - reads as "move to .cpp" which is impossible for templates. Show real bodies / mark elision.
+=== C++ IDIOMATIC-REFACTOR ARC COMPLETE (16 lessons). ===
 Possible future arcs (confirm with user before starting a new mission):
-- Make Pool::items private (what still reaches in: reset, collisions); find-shaped helper for breaking
-  loops; collisions via nested each_active; C++20 concepts; per-scene state / pause overlay.
+- C++20 concepts (name element requirements); Swarm forwarding own iteration (Demeter); REVISIT RL
+  GOAL (mission change per MISSION.md — confirm + new learning record) as C++ refactor arc completes.
 - Per-scene state as class members (pause menu, settings, level-complete).
 - Revisit the repo's original RL-environment goal (currently out of scope in MISSION.md).
 

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 16 · Encapsulation capstone</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 16 · Refactor · Encapsulation capstone</span>
+<h1>Make <code>items</code> private — earn it</h1>
+<p class="subtitle">You asked the right question: can <code>Pool::items</code> finally go <code>private</code>? Not yet — five call sites still reach in. The fix isn't to hide the data and break them; it's to give <code>Pool</code> a real container interface so nobody <em>needs</em> the raw array. Then privacy is free.</p>
+
+<h2>Why bother hiding a field?</h2>
+<p><code>items</code> being public means any code, anywhere, can do anything to it — reassign the whole
+array, resize assumptions, leave it inconsistent. Privacy buys two things: <strong>(1)</strong> you control
+the surface — callers use the operations you sanctioned, not arbitrary field pokes; <strong>(2)</strong>
+you keep the freedom to <em>change the representation later</em> (a free-list, a bitset of active flags,
+a different array size) without touching a single caller, because they never depended on the
+representation — only the interface. "Expose operations, not data" is the whole game. <span class="cite">[<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-private">Core Guidelines C.9: minimise exposure of members; C.131: avoid trivial getters/setters by exposing meaningful operations</a>]</span></p>
+
+<h2>The five holdouts, and the one tool each needs</h2>
+<table>
+<tr><th>Site</th><th>Pattern</th><th>Needs</th></tr>
+<tr><td>swarm edge-detect / breach</td><td>iterate, <code>break</code> early</td><td>range-<code>for</code> over the pool</td></tr>
+<tr><td>both <code>reset()</code></td><td>touch <em>all</em> slots (incl. inactive)</td><td>range-<code>for</code> over the pool</td></tr>
+<tr><td>swarm <code>reset()</code> formation</td><td>write slot <em>by index</em></td><td><code>operator[]</code></td></tr>
+<tr><td>collisions</td><td>iterate active, mutate</td><td><code>eachActive</code> (already have it) or range-<code>for</code></td></tr>
+</table>
+<p>So two new pieces of interface — <strong>range-<code>for</code> support</strong> and
+<strong><code>operator[]</code></strong> — cover everything. Add them, and the raw <code>items</code> has
+no remaining users outside the class.</p>
+
+<h2>Tool 1: make <code>Pool</code> iterable (the range-for protocol)</h2>
+<p>A range-based <code>for (x : container)</code> is just sugar. The compiler rewrites it to call
+<code>container.begin()</code> and <code>container.end()</code> and walk between them. So "being iterable"
+means: provide <code>begin()</code> and <code>end()</code>. Your underlying <code>std::array</code> already
+has them — just forward:</p>
+<pre><span class="cm">// pool.h</span>
+  <span class="add">auto begin()       { return items.begin(); }</span>
+  <span class="add">auto end()         { return items.end(); }</span>
+  <span class="add">auto begin() const { return items.begin(); }   // const overloads → const range-for works too</span>
+  <span class="add">auto end()   const { return items.end(); }</span></pre>
+<p>Now <code>for (Enemy&amp; e : pool)</code> works — and crucially, it's a <em>real</em> loop in the caller,
+so <code>break</code> and <code>continue</code> work normally. That's why it serves the edge-detect and
+breach loops that <code>eachActive</code> couldn't. <span class="cite">[<a href="https://en.cppreference.com/w/cpp/language/range-for">cppreference: range-for</a>]</span></p>
+
+<h2>Tool 2: <code>operator[]</code> for indexed access</h2>
+<p><code>Swarm::reset</code> writes specific slots by index to build the formation. Overload the subscript
+operator so <code>pool[i]</code> means <code>pool.items[i]</code>:</p>
+<pre><span class="cm">// pool.h</span>
+  <span class="add">T&amp;       operator[](std::size_t i)       { return items[i]; }</span>
+  <span class="add">const T&amp; operator[](std::size_t i) const { return items[i]; }</span></pre>
+<p>Operator overloading lets your type use built-in syntax. Return <code>T&amp;</code> so
+<code>pool[i] = {...}</code> assigns into the slot; the <code>const</code> overload returns
+<code>const T&amp;</code> for read-only contexts (const-correctness again, lesson 4). <span class="cite">[<a href="https://en.cppreference.com/w/cpp/language/operators">cppreference: operator overloading</a>]</span></p>
+
+<h2>Now hide the field — and switch <code>struct</code> to <code>class</code></h2>
+<pre><span class="cm">// pool.h — final shape</span>
+template &lt;typename T, std::size_t N&gt;
+<span class="add">class Pool {</span>
+<span class="add">public:</span>
+  T* acquire();                                  <span class="cm">// (bodies as before)</span>
+  int activeCount() const;
+  template &lt;typename F&gt; void eachActive(F fn);
+  template &lt;typename F&gt; void eachActive(F fn) const;
+  auto begin();  auto end();                     <span class="cm">// + const overloads</span>
+  auto begin() const;  auto end() const;
+  T&amp; operator[](std::size_t i);
+  const T&amp; operator[](std::size_t i) const;
+
+<span class="add">private:</span>
+  <span class="add">std::array&lt;T, N&gt; items{};                       // nobody outside Pool can touch this now</span>
+};</pre>
+<div class="why">
+<h3><code>struct</code> vs <code>class</code> — the only real difference</h3>
+<p>They are <em>identical</em> except the default access level: <code>struct</code> members are
+<code>public</code> by default, <code>class</code> members <code>private</code>. The convention (C.2, C.8):
+use <code>struct</code> for a passive bundle of public data with no invariant (your <code>Enemy</code>,
+<code>Projectile</code> — plain data); use <code>class</code> once you have private state behind a
+deliberate interface. <code>Pool</code> just graduated. Your entity types stay <code>struct</code> — they
+really are just public fields, and that's fine.</p>
+</div>
+
+<h2>Convert the five sites</h2>
+<pre><span class="cm">// swarm.cpp — reset(): index write, and the all-touch is implicit in the index loop</span>
+<span class="add">pool[enemyIndex]</span> = { .pos = {...}, .radius = ENEMY_RADIUS, ... };   <span class="cm">// was pool.items[enemyIndex]</span>
+
+<span class="cm">// swarm.cpp — edge-detect & breach loops (these break; range-for is fine)</span>
+for (Enemy&amp; enemy : <span class="add">pool</span>) { ... break; ... }                <span class="cm">// was : pool.items</span>
+
+<span class="cm">// projectile_pool.cpp — reset() clears all slots</span>
+for (auto&amp; projectile : <span class="add">pool</span>) projectile = { .active = false };
+
+<span class="cm">// scene_gameplay.cpp — collisions</span>
+for (Projectile&amp; bullet : <span class="add">state.projectilePool.pool</span>) { ... }     <span class="cm">// was .pool.items</span>
+for (Enemy&amp; enemy : <span class="add">state.swarm.pool</span>) { ... }                   <span class="cm">// ×2</span></pre>
+<p>Build. If anything still names <code>.items</code> outside <code>pool.h</code>, the compiler now refuses
+it — that error <em>is</em> the proof the encapsulation is real.</p>
+
+<div class="why">
+<h3>"Isn't exposing begin/end/<code>[]</code> just as leaky as public <code>items</code>?"</h3>
+<p>Fair challenge — and no. Public <code>items</code> hands out the <em>array object</em>: callers can swap
+it wholesale, and they're welded to "it's a <code>std::array&lt;T,N&gt;</code>." The interface hands out
+<em>access patterns</em> (walk the elements, index one) without naming the container. Swap the storage
+tomorrow and as long as <code>begin/end/[]</code> still work, every caller compiles unchanged. You're
+exposing <em>what you can do</em>, not <em>what it is</em>. That's the line between interface and
+representation.</p>
+</div>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/pool.h</code> — add <code>begin/end</code> (×2 const) and <code>operator[]</code> (×2 const); switch <code>struct</code>→<code>class</code> with <code>public:</code>/<code>private:</code>; move <code>items</code> under <code>private:</code>.</li>
+<li><code>src/swarm.cpp</code> — <code>pool.items[i]</code>→<code>pool[i]</code>; the two break-loops <code>: pool.items</code>→<code>: pool</code>.</li>
+<li><code>src/projectile_pool.cpp</code> — <code>reset()</code>'s loop <code>: pool.items</code>→<code>: pool</code>.</li>
+<li><code>src/scene_gameplay.cpp</code> — the three collision loops <code>.pool.items</code>→<code>.pool</code>.</li>
+<li>Build &amp; play full cycle — behaviour identical; <code>items</code> now unreachable from outside.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) Provide the <code>const</code> overloads of <code>begin/end</code> or
+any const range-for over a pool won't compile. (2) <code>operator[]</code> returning <code>T&amp;</code> (not
+by value) — you must assign <em>into</em> the slot. (3) <code>acquire</code>/<code>eachActive</code> use
+<code>items</code> internally — that's fine, they're members; only <em>outside</em> access is blocked. (4)
+If you kept <code>Pool</code> a <code>struct</code>, you must still write <code>private:</code> before
+<code>items</code> — the access label is what matters, not the keyword.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="1">
+  <div class="q">What makes a type usable in <code>for (x : container)</code>?</div>
+  <button data-fb="No — no interface is required to be inherited; it's a duck-typed protocol.">It must inherit from a std::iterable base</button>
+  <button data-fb="Right — the loop desugars to begin()/end(); provide those and it works.">It provides begin() and end() the loop calls</button>
+  <button data-fb="No — operator[] enables indexing, not range-for.">It overloads operator[] for each index</button>
+  <button data-fb="No — size() isn't what range-for uses.">It exposes a size() method</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why is exposing <code>begin/end/[]</code> better than a public <code>items</code> field?</div>
+  <button data-fb="No — it's not about line count; it's about coupling.">It is less code to write overall</button>
+  <button data-fb="No — both can be const-correct; that's not the distinction.">Only methods can be made const</button>
+  <button data-fb="Right — callers depend on access patterns, not the concrete container, so the storage can change freely.">Callers depend on operations, not the representation, so storage can change</button>
+  <button data-fb="No — range-for isn't faster than indexing a public array.">Iterating is faster than indexing a field</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">The difference between <code>struct</code> and <code>class</code> in C++ is…</div>
+  <button data-fb="Exactly — default access (struct public, class private); everything else is identical.">Only the default member access level</button>
+  <button data-fb="No — both support methods, templates, inheritance equally.">struct can't have methods, class can</button>
+  <button data-fb="No — both can be templated.">Only class can be a template</button>
+  <button data-fb="No — neither implies heap allocation; that's unrelated.">class objects live on the heap, structs on the stack</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#S-class">Core Guidelines — C: Classes</a>
+(C.2 struct-vs-class by invariant, C.9 minimise member exposure, C.131 meaningful operations over getters/setters),
+plus <a href="https://en.cppreference.com/w/cpp/language/range-for">range-for</a> and <a href="https://en.cppreference.com/w/cpp/language/operators">operator overloading</a>. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: should the collision loops reach <code>state.swarm.pool</code>
+at all, or should <code>Swarm</code> forward its own iteration (one more Demeter step)? Could
+<code>operator[]</code> be dropped if <code>reset</code> built the formation through <code>begin/end</code>
+instead? And the structural one: with <code>Pool</code> now a clean container, is the C++ refactor arc
+essentially <em>done</em> — time to point this engine back at the original RL goal?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0015-lambdas-each-active.html">Lesson 15: lambdas & eachActive</a></span>
+  <span>Encapsulation capstone. The Pool is now a real container.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 16 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
