@@ -11,12 +11,15 @@ constexpr Vector2 CANVAS_OFFSET = {-CANVAS_SIZE / 2.0f, -CANVAS_SIZE / 2.0f};
 constexpr float PLAYER_RADIUS = 12.5f;
 constexpr float PLAYER_SPEED = 300.0f;
 constexpr int PLAYER_HEALTH = 5;
+
 constexpr int MAX_ENEMIES_PER_ROW = 11;
 constexpr int COL_PADDING = 80;
 constexpr int ROW_PADDING = 60;
 constexpr float ENEMY_SPEED = 50.0f;
 constexpr float ENEMY_RADIUS = 15.0f;
 constexpr int ENEMY_SCORE_VALUE = 100;
+constexpr float ENEMY_VERTICAL_MOVEMENT = ROW_PADDING / 2.0f;
+
 constexpr float PROJECTILE_SPEED = 500.0f;
 constexpr float PROJECTILE_RADIUS = 5.0f;
 
@@ -40,11 +43,13 @@ void InitEnemies(GameState* state) {
     int row = enemyIndex / MAX_ENEMIES_PER_ROW;
     float offsetX = startGridPos.x;
     float offsetY = startGridPos.y;
-    Enemy enemy = {.pos = (Vector2){offsetX + (column * COL_PADDING),
-                                    offsetY + (row * ROW_PADDING)},
-                   .radius = ENEMY_RADIUS,
-                   .active = true,
-                   .scoreValue = ENEMY_SCORE_VALUE};
+    Enemy enemy = {
+        .pos = (Vector2){offsetX + (column * COL_PADDING),
+                         offsetY + (row * ROW_PADDING)},
+        .radius = ENEMY_RADIUS,
+        .scoreValue = ENEMY_SCORE_VALUE,
+        .active = true,
+    };
     state->enemies[enemyIndex] = enemy;
     state->enemyDirection = (Vector2){1.0f, 0.0f};
     state->enemySpeed = ENEMY_SPEED;
@@ -144,6 +149,12 @@ void DrawProjectiles(const GameState* state) {
   }
 }
 
+void Enemy::moveHorizontally(Vector2 dir, float speed, float deltaTime) {
+  pos = Vector2Add(pos, Vector2Scale(dir, speed * deltaTime));
+}
+
+void Enemy::moveVertically(float amount) { pos.y += amount; }
+
 void UpdateEnemies(GameState* state, float dt) {
   Vector2 direction = state->enemyDirection;
   float speed = state->enemySpeed;
@@ -167,7 +178,7 @@ void UpdateEnemies(GameState* state, float dt) {
 
   if (needToMoveDown) {
     for (Enemy& enemy : state->enemies) {
-      enemy.pos.y += ROW_PADDING / 2.0;
+      enemy.moveVertically(ENEMY_VERTICAL_MOVEMENT);
       if (enemy.pos.y > windowSize.y) {
         state->currentScene = GAMEOVER;
         break;
@@ -180,8 +191,7 @@ void UpdateEnemies(GameState* state, float dt) {
     if (!enemy.active)
       continue;
 
-    Vector2* enemyPos = &enemy.pos;
-    *enemyPos = Vector2Add(*enemyPos, Vector2Scale(direction, speed * dt));
+    enemy.moveHorizontally(direction, speed, dt);
   }
 }
 
