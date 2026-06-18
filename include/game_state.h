@@ -1,9 +1,10 @@
 #pragma once
+#include "projectile_pool.h"
 #include "swarm.h"
 
 struct GameState {
   Player player;
-  std::array<Projectile, MAX_PROJECTILES> bullets;
+  ProjectilePool projectilePool;
   Swarm swarm;
   bool victory;
   GameResources resources;

@@ -12,9 +12,6 @@ constexpr float PLAYER_RADIUS = 12.5f;
 constexpr float PLAYER_SPEED = 300.0f;
 constexpr int PLAYER_HEALTH = 5;
 
-constexpr float PROJECTILE_SPEED = 500.0f;
-constexpr float PROJECTILE_RADIUS = 5.0f;
-
 void InitPlayer(GameState* state) {
   Vector2 startPos = {GetScreenWidth() / 2.0f,
                       GetScreenHeight() - (PLAYER_RADIUS * 4)};
@@ -25,18 +22,12 @@ void InitPlayer(GameState* state) {
                            .health = PLAYER_HEALTH};
 }
 
-void InitBullets(GameState* state) {
-  for (int bulletIndex = 0; bulletIndex < MAX_PROJECTILES; bulletIndex++) {
-    state->bullets[bulletIndex] = {.active = false};
-  }
-}
-
 void InitGameplay(GameState* state) {
   state->score = 0;
   state->victory = false;
   InitPlayer(state);
   state->swarm.reset();
-  InitBullets(state);
+  state->projectilePool.reset();
 }
 
 void Player::update(float dt) {
@@ -72,22 +63,8 @@ void PlayerShoot(GameState& state) {
   if (!IsKeyPressed(KEY_SPACE))
     return;
 
-  PlaySound(state.resources.laserSound);
-  for (Projectile& bullet : state.bullets) {
-    if (bullet.active)
-      continue;
-
-    bullet.spawn(state.player.pos);
-    break;
-  }
-}
-
-void Projectile::spawn(Vector2 from, Vector2 dir) {
-  pos = from;
-  this->dir = dir;
-  speed = PROJECTILE_SPEED;
-  radius = PROJECTILE_RADIUS;
-  active = true;
+  if (state.projectilePool.fire(state.player.pos, {0.0f, -1.0f}))
+    PlaySound(state.resources.laserSound);
 }
 
 void Projectile::update(float dt) {
@@ -104,18 +81,6 @@ void Projectile::draw(const Texture2D& texture) const {
   DrawCircleLinesV(pos, radius, RED);
 }
 
-void UpdateProjectiles(GameState& state, float dt) {
-  for (Projectile& bullet : state.bullets) {
-    bullet.update(dt);
-  }
-}
-
-void DrawProjectiles(const GameState& state) {
-  for (const Projectile& bullet : state.bullets) {
-    bullet.draw(state.resources.laserTexture);
-  }
-}
-
 void Enemy::moveHorizontally(Vector2 dir, float speed, float deltaTime) {
   pos = Vector2Add(pos, Vector2Scale(dir, speed * deltaTime));
 }
@@ -130,7 +95,7 @@ void Enemy::draw(const Texture2D& texture) const {
 }
 
 void CheckBulletEnemyCollisions(GameState& state) {
-  for (Projectile& bullet : state.bullets) {
+  for (Projectile& bullet : state.projectilePool.projectiles) {
     if (!bullet.active)
       continue;
 
@@ -168,7 +133,7 @@ std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
     state.player.health = 0;
   state.player.update(dt);
   PlayerShoot(state);
-  UpdateProjectiles(state, dt);
+  state.projectilePool.update(dt);
   CheckBulletEnemyCollisions(state);
   CheckPlayerEnemyCollisions(state);
 
@@ -190,7 +155,7 @@ void SceneGameplay::draw(const GameState& state) const {
 
   state.player.draw(state.resources.playerTexture);
   state.swarm.draw(state.resources.enemyTexture);
-  DrawProjectiles(state);
+  state.projectilePool.draw(state.resources.laserTexture);
 
   DrawText(TextFormat("Health: %i", state.player.health), 20,
            GetScreenHeight() - 40, font_size, WHITE);

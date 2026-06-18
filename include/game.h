@@ -2,8 +2,6 @@
 
 #include "raylib.h"
 
-constexpr int MAX_PROJECTILES = 100;
-
 extern const Vector2 windowSize;
 
 struct Player {
