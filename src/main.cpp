@@ -1,8 +1,7 @@
 #include "game.h"
 #include "raylib.h"
 #include "resource_dir.h"
-#include "scene.h"
-#include <memory>
+#include "scene_manager.h"
 
 #include <stdio.h>
 
@@ -43,16 +42,10 @@ int main() {
   InitGameplay(&state);
   state.currentScene = GameScene::TITLE;
 
-  std::unique_ptr<Scene> current = makeScene(GameScene::TITLE);
-  GameScene shown = GameScene::TITLE;
+  SceneManager scenes(GameScene::TITLE);
 
   while (!WindowShouldClose()) {
-    if (state.currentScene != shown) {
-      current = makeScene(state.currentScene);
-      shown = state.currentScene;
-    }
-    current->update(state, GetFrameTime());
-    current->draw(state);
+    scenes.tick(state, GetFrameTime());
   }
 
   CloseAudioDevice();
