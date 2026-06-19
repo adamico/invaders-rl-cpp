@@ -1,4 +1,5 @@
 #pragma once
+
 #include <raylib.h>
 
 constexpr int CANVAS_SIZE = 50;

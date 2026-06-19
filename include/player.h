@@ -1,4 +1,5 @@
 #pragma once
+
 #include <raylib.h>
 
 constexpr float PLAYER_RADIUS = 12.5f;

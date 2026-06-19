@@ -1,6 +1,5 @@
 #pragma once
 
-#include "game.h"
 #include "scene.h"
 
 struct SceneTitle : Scene {
