@@ -1,5 +1,7 @@
-#include "player.h"
+#include <cmath>
+
 #include "canvas.h"
+#include "player.h"
 #include "raymath.h"
 
 // public methods
@@ -13,18 +15,8 @@ void Player::reset() {
 }
 
 void Player::update(float dt) {
-  dir = Vector2Zero();
-
-  if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) dir.x -= 1.0f;
-  if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) dir.x += 1.0f;
-  if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) dir.y -= 1.0f;
-  if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) dir.y += 1.0f;
-
-  dir = Vector2Normalize(dir);
-  pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
-  pos = Vector2Clamp(
-      pos, (Vector2){radius, radius},
-      (Vector2){GetScreenWidth() - radius, GetScreenHeight() - radius});
+  handleInput();
+  move(dt);
 
   if (invulnerableTimer > 0.0f) invulnerableTimer -= dt;
 };
@@ -36,13 +28,29 @@ void Player::draw(const Texture2D& texture) const {
   DrawCircleLinesV(pos, radius, RED); // hitbox
 };
 
-void Player::takeDamage(int amount) {
+void Player::takeDamage() {
   if (!isVulnerable()) return;
 
   loseLife();
 }
 
 // private methods
+
+void Player::move(float dt) {
+  pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
+  pos = Vector2Clamp(
+      pos, (Vector2){radius, radius},
+      (Vector2){GetScreenWidth() - radius, GetScreenHeight() - radius});
+}
+
+void Player::handleInput() {
+  dir = Vector2Zero();
+
+  if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) dir.x -= 1.0f;
+  if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) dir.x += 1.0f;
+
+  dir = Vector2Normalize(dir);
+}
 
 void Player::respawn() {
   pos = {GetScreenWidth() / 2.0f, GetScreenHeight() - (PLAYER_RADIUS * 4)};

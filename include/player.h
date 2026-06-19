@@ -16,7 +16,7 @@ public:
   void reset();
   void update(float deltaTime);
   void draw(const Texture2D& texture) const;
-  void takeDamage(int amount = 1);
+  void takeDamage();
   void die() { lives = 0; };
 
   bool isVulnerable() const { return invulnerableTimer <= 0.0f; };
@@ -24,6 +24,8 @@ public:
   int livesRemaining() const { return lives; };
 
 private:
+  void move(float deltaTime);
+  void handleInput();
   void respawn();
   void loseLife();
 
