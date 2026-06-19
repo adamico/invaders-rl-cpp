@@ -89,7 +89,6 @@ void detectProjectileBlockCollisions(ProjectilePool& pool, GameState& state) {
   for (Projectile& bullet : pool) {
     if (!bullet.active) continue;
 
-    // loop over bunkers
     for (Bunker& bunker : state.bunkers) {
       for (Block& block : bunker) {
         if (!block.active) continue;
@@ -98,6 +97,22 @@ void detectProjectileBlockCollisions(ProjectilePool& pool, GameState& state) {
           bullet.deactivate();
           block.deactivate();
           break;
+        }
+      }
+    }
+  }
+}
+
+void detectEnemyBlockCollisions(GameState& state) {
+  for (Enemy& enemy : state.swarm) {
+    if (!enemy.active) continue;
+
+    for (Bunker& bunker : state.bunkers) {
+      for (Block& block : bunker) {
+        if (!block.active) continue;
+
+        if (overlaps(enemy, block)) {
+          block.deactivate();
         }
       }
     }
@@ -143,6 +158,7 @@ std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
   detectEnemyBulletPlayerCollisions(state);
   detectProjectileBlockCollisions(state.projectilePool, state);
   detectProjectileBlockCollisions(state.enemyProjectilePool, state);
+  detectEnemyBlockCollisions(state);
 
   if (state.swarm.hasBreached()) state.player.die();
   if (state.swarm.activeCount() <= 0) state.victory = true;
