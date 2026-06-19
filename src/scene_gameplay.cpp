@@ -192,18 +192,19 @@ void detectEnemyBulletPlayerCollisions(GameState& state) {
 }
 
 std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
-  // REFACTOR: the return value of swarm.update() is unclear
-  // REFACTOR: should be state.player.die();
-  if (state.swarm.update(dt)) state.player.die();
   state.player.update(dt);
   playerShoot(state);
-  updateEnemyFire(state, dt);
   state.projectilePool.update(dt);
+
+  state.swarm.update(dt);
+  updateEnemyFire(state, dt);
   state.enemyProjectilePool.update(dt);
+
   detectBulletEnemyCollisions(state);
   detectPlayerEnemyCollisions(state);
   detectEnemyBulletPlayerCollisions(state);
 
+  if (state.swarm.hasBreached()) state.player.die();
   if (state.swarm.activeCount() <= 0) state.victory = true;
   if (state.victory || !state.player.isAlive())
     return std::make_unique<SceneGameover>();

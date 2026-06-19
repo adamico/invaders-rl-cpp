@@ -7,9 +7,11 @@ constexpr int MAX_ENEMIES = 55;
 class Swarm {
 public:
   void reset();
-  bool update(float deltaTime);
+  void update(float deltaTime);
   void draw(const Texture2D& texture) const;
   void deactivate(Enemy& enemy);
+
+  bool hasBreached() const { return breached; }
   int activeCount() const { return pool.activeCount(); }
 
   auto begin() { return pool.begin(); }
@@ -22,4 +24,5 @@ private:
 
   Vector2 direction{};
   int speed{};
+  bool breached{};
 };

@@ -30,9 +30,9 @@ void Swarm::reset() {
   }
 }
 
-bool Swarm::update(float deltaTime) {
+void Swarm::update(float deltaTime) {
   bool needToMoveDown = false;
-  bool breached = false;
+  breached = false;
   int rightEdge = GetScreenWidth() - ENEMY_RADIUS;
   int leftEdge = ENEMY_RADIUS;
 
@@ -63,8 +63,6 @@ bool Swarm::update(float deltaTime) {
   pool.eachActive([&](Enemy& enemy) {
     enemy.moveHorizontally(direction, speed, deltaTime);
   });
-
-  return breached;
 }
 
 void Swarm::draw(const Texture2D& texture) const {
