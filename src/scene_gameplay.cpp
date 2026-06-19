@@ -122,7 +122,7 @@ void detectPlayerEnemyCollisions(GameState& state) {
 
     if (overlaps(state.player, enemy)) {
       state.swarm.deactivate(enemy);
-      state.player.die();
+      state.player.takeDamage();
     }
   }
 }
@@ -153,7 +153,7 @@ std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
 
   if (state.swarm.hasBreached()) state.player.die();
   if (state.swarm.activeCount() <= 0) state.victory = true;
-  if (state.victory || !state.player.isAlive())
+  if (state.victory || state.player.isDead())
     return std::make_unique<SceneGameover>();
 
   return nullptr;
@@ -167,7 +167,7 @@ void SceneGameplay::draw(const GameState& state) const {
   state.swarm.draw(state.resources.enemyTexture);
   state.projectilePool.draw(state.resources.laserTexture);
   state.enemyProjectilePool.draw(state.resources.laserTexture);
-  drawHud(state.player.health(), state.score);
+  drawHud(state.player.livesRemaining(), state.score);
 
   EndDrawing();
 }

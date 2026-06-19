@@ -3,7 +3,8 @@
 
 constexpr float PLAYER_RADIUS = 12.5f;
 constexpr float PLAYER_SPEED = 300.0f;
-constexpr int PLAYER_HEALTH = 5;
+constexpr int PLAYER_LIVES = 3;
+constexpr float INVULNERABILITY_TIME = 2.0f;
 
 class Player {
 public:
@@ -16,11 +17,16 @@ public:
   void update(float deltaTime);
   void draw(const Texture2D& texture) const;
   void takeDamage(int amount = 1);
-  void die();
+  void die() { lives = 0; };
 
-  bool isAlive() const { return hp > 0; };
-  int health() const { return hp; };
+  bool isVulnerable() const { return invulnerableTimer <= 0.0f; };
+  bool isDead() const { return lives <= 0; };
+  int livesRemaining() const { return lives; };
 
 private:
-  int hp{};
+  void respawn();
+  void loseLife();
+
+  int lives{};
+  float invulnerableTimer{};
 };

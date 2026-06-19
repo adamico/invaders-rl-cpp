@@ -2,4 +2,4 @@
 
 #include <raylib.h>
 
-void drawHud(int health, int score);
+void drawHud(int lives, int score);

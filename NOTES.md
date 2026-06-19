@@ -106,8 +106,15 @@ waves, swarm speed-up, juice.
     the clean option: Player::reset() now no-arg + self-places (scene's PLAYER_RADIUS leak gone). Basis:
     CG SF.11/SF.2/SF.10 + Lakos. See LR-0022.
 
-NEXT (Phase 2, user's pick pending): real lives+respawn (L21 delivered, awaiting apply - lands in
-player.h/.cpp now) OR bunkers.
+21. [DONE L0021] Lives & respawn, CLASSIC model (user chose: dropped hp entirely, lives = only resource,
+    one hit = one life). takeDamage()=any physical hit (bullet+body contact)->loseLife->respawn; die()=
+    breach only (instant gameover). invuln mercy window + fmodf blink. User caught layering: isGameOver()
+    -> isDead() (player reports own state, scene interprets). 2 linked bugs fixed: inverted loseLife
+    condition + first-spawn invuln. Player now fully owns life-cycle. See LR-0023.
+
+NEXT (Phase 2, user's pick pending): waves (clear swarm -> faster/lower next wave) OR bunkers (destructible
+cover). Deferred: enum class PlayerState if state grows; drop unused takeDamage(int) param when tidying;
+"juice" presentation arc (screen-shake/flash/sound at collision sites).
 Future presentation arc: "juice" (screen-shake/hit-flash/sound) at the collision sites; takeDamage() could
 return whether damage applied so scene drives feedback. Type Object full form if weapon/enemy variety grows.
 Possible future arcs (confirm with user before starting a new mission):

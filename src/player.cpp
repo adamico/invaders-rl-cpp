@@ -2,12 +2,14 @@
 #include "canvas.h"
 #include "raymath.h"
 
+// public methods
+
 void Player::reset() {
-  pos = {GetScreenWidth() / 2.0f, GetScreenHeight() - (PLAYER_RADIUS * 4)};
-  dir = {0.0f, 0.0f};
   speed = PLAYER_SPEED;
   radius = PLAYER_RADIUS;
-  hp = PLAYER_HEALTH;
+  lives = PLAYER_LIVES;
+  respawn();
+  invulnerableTimer = 0.0f;
 }
 
 void Player::update(float dt) {
@@ -23,17 +25,32 @@ void Player::update(float dt) {
   pos = Vector2Clamp(
       pos, (Vector2){radius, radius},
       (Vector2){GetScreenWidth() - radius, GetScreenHeight() - radius});
+
+  if (invulnerableTimer > 0.0f) invulnerableTimer -= dt;
+};
+
+void Player::draw(const Texture2D& texture) const {
+  if (!isVulnerable() && fmodf(invulnerableTimer, 0.2f) > 0.1f) return;
+
+  DrawTextureV(texture, Vector2Add(pos, CANVAS_OFFSET), WHITE);
+  DrawCircleLinesV(pos, radius, RED); // hitbox
 };
 
 void Player::takeDamage(int amount) {
-  hp -= amount;
-  if (hp < 0) hp = 0;
+  if (!isVulnerable()) return;
+
+  loseLife();
 }
 
-void Player::die() { hp = 0; }
+// private methods
 
-void Player::draw(const Texture2D& texture) const {
-  Vector2 drawPos = Vector2Add(pos, CANVAS_OFFSET);
-  DrawTextureV(texture, drawPos, WHITE);
-  DrawCircleLinesV(pos, radius, RED);
-};
+void Player::respawn() {
+  pos = {GetScreenWidth() / 2.0f, GetScreenHeight() - (PLAYER_RADIUS * 4)};
+  dir = {0.0f, 0.0f};
+  invulnerableTimer = INVULNERABILITY_TIME;
+}
+
+void Player::loseLife() {
+  --lives;
+  if (lives > 0) respawn();
+}
