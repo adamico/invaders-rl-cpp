@@ -84,6 +84,26 @@ void detectEnemyBulletPlayerCollisions(GameState& state) {
     }
   }
 }
+
+void detectProjectileBlockCollisions(ProjectilePool& pool, GameState& state) {
+  for (Projectile& bullet : pool) {
+    if (!bullet.active) continue;
+
+    // loop over bunkers
+    for (Bunker& bunker : state.bunkers) {
+      for (Block& block : bunker) {
+        if (!block.active) continue;
+
+        if (overlaps(bullet, block)) {
+          bullet.deactivate();
+          block.deactivate();
+          break;
+        }
+      }
+    }
+  }
+}
+
 } // namespace
 
 void SceneGameplay::enter(GameState& state) {
@@ -92,6 +112,18 @@ void SceneGameplay::enter(GameState& state) {
 
   state.player.reset();
   state.swarm.reset();
+  float bunkerY = GetScreenHeight() - 220.0f;
+  float bunkerSpacing = 300.0f;
+  float bunkerWidth = MAX_BLOCK_PER_ROW * BLOCK_SIZE;
+  float bunkersWidth =
+      (bunkerWidth * BUNKER_NUMBER) + (bunkerSpacing * (BUNKER_NUMBER - 1));
+  float offsetX = (GetScreenWidth() - bunkersWidth) / 2.0f;
+  Vector2 startBunkerPos = {offsetX, bunkerY};
+  for (int bunkerIndex = 0; bunkerIndex < BUNKER_NUMBER; ++bunkerIndex) {
+    state.bunkers[bunkerIndex].reset(
+        {startBunkerPos.x + (bunkerWidth + bunkerSpacing) * bunkerIndex,
+         startBunkerPos.y});
+  }
   state.projectilePool.reset(PLAYER_PROJECTILE_SPEC);
   state.enemyProjectilePool.reset(ENEMY_PROJECTILE_SPEC);
   state.enemyFireCooldown = ENEMY_FIRE_COOLDOWN;
@@ -109,6 +141,8 @@ std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
   detectBulletEnemyCollisions(state);
   detectPlayerEnemyCollisions(state);
   detectEnemyBulletPlayerCollisions(state);
+  detectProjectileBlockCollisions(state.projectilePool, state);
+  detectProjectileBlockCollisions(state.enemyProjectilePool, state);
 
   if (state.swarm.hasBreached()) state.player.die();
   if (state.swarm.activeCount() <= 0) state.victory = true;
@@ -126,6 +160,9 @@ void SceneGameplay::draw(const GameState& state) const {
   state.swarm.draw(state.resources.enemyTexture);
   state.projectilePool.draw(state.resources.laserTexture);
   state.enemyProjectilePool.draw(state.resources.laserTexture);
+  for (const auto& bunker : state.bunkers) {
+    bunker.draw();
+  }
   drawHud(state.player.livesRemaining(), state.score);
 
   EndDrawing();
