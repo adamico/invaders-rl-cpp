@@ -1,8 +1,8 @@
 #pragma once
 
-#include "game.h"
 #include "player.h"
 #include "projectile_pool.h"
+#include "resources.h"
 #include "swarm.h"
 
 struct GameState {
@@ -15,6 +15,3 @@ struct GameState {
   int score;
   float enemyFireCooldown;
 };
-
-void centerText(const char* text, int yPos, int fontSize, Color textColor);
-void initGameplay(GameState* state);

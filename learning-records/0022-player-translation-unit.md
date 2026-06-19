@@ -16,7 +16,7 @@ scene_gameplay.cpp).
 
 **Concepts (physical design, not language features):**
 - A header is a DEPENDENCY SURFACE. Putting CANVAS_OFFSET in the kitchen-sink game.h would force player.cpp
-  to `#include "game.h"` just to draw — coupling Player to Enemy/Projectile/GameResources it doesn't use.
+  to `#include "resources.h"` just to draw — coupling Player to Enemy/Projectile/GameResources it doesn't use.
   A focused canvas.h keeps Player's deps = raylib + canvas.h only. (This is the real reason entity-per-file
   matters: controlling who-depends-on-what, not tidiness.)
 - Owner-owns-its-constants: PLAYER_* live in player.h (travel with Player if it's ever reused); shared

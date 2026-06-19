@@ -2,7 +2,7 @@
 
 #include "raylib.h"
 
-extern const Vector2 windowSize;
+constexpr Vector2 windowSize = {1280, 720};
 
 struct GameResources {
   Texture2D playerTexture;

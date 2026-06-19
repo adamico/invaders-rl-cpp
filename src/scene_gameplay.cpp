@@ -1,10 +1,10 @@
 #include "scene_gameplay.h"
 
 #include "collision.h"
-#include "game.h"
 #include "hud.h"
 #include "projectile_pool.h"
 #include "raylib.h"
+#include "resources.h"
 #include "scene_gameover.h"
 #include <stdarg.h>
 #include <stdio.h>
