@@ -5,6 +5,7 @@
 constexpr float PLAYER_RADIUS = 12.5f;
 constexpr float PLAYER_SPEED = 300.0f;
 constexpr int PLAYER_LIVES = 3;
+constexpr float PLAYER_BOTTOM_MARGIN = 100.0f;
 constexpr float INVULNERABILITY_TIME = 2.0f;
 
 class Player {

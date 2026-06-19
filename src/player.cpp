@@ -53,7 +53,7 @@ void Player::handleInput() {
 }
 
 void Player::respawn() {
-  pos = {GetScreenWidth() / 2.0f, GetScreenHeight() - (PLAYER_RADIUS * 4)};
+  pos = {GetScreenWidth() / 2.0f, GetScreenHeight() - PLAYER_BOTTOM_MARGIN};
   dir = {0.0f, 0.0f};
   invulnerableTimer = INVULNERABILITY_TIME;
 }
