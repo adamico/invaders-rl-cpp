@@ -124,18 +124,10 @@ void updateEnemyFire(GameState& state, float dt) {
   state.enemyFireCooldown -= dt;
   if (state.enemyFireCooldown > 0.0f) return;
 
-  Enemy* shooter = nullptr;
-
-  int seen = 0;
-  for (Enemy& enemy : state.swarm) {
-    if (!enemy.active) continue;
-    ++seen;
-    if (GetRandomValue(1, seen) == 1) shooter = &enemy;
+  if (auto pos = state.swarm.randomShooterPosition()) {
+    state.enemyProjectilePool.fire(*pos);
   }
 
-  if (shooter) {
-    state.enemyProjectilePool.fire(shooter->pos);
-  }
   state.enemyFireCooldown = ENEMY_FIRE_COOLDOWN;
 }
 
@@ -162,7 +154,6 @@ void detectBulletEnemyCollisions(GameState& state) {
         PlaySound(state.resources.explosionSound);
         bullet.deactivate();
         state.swarm.deactivate(enemy);
-        // REFACTOR: should be state.score.add(enemy.scoreValue);
         state.score += enemy.scoreValue;
       }
     }

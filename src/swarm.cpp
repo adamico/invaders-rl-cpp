@@ -69,4 +69,19 @@ void Swarm::draw(const Texture2D& texture) const {
   pool.eachActive([&](const Enemy& enemy) { enemy.draw(texture); });
 }
 
-void Swarm::deactivate(Enemy& enemy) { enemy.active = false; }
+void Swarm::deactivate(Enemy& enemy) { enemy.active = false; };
+
+std::optional<Vector2> Swarm::randomShooterPosition() const {
+  const Enemy* shooter = nullptr;
+
+  int seen = 0;
+  for (const Enemy& enemy : pool) {
+    if (!enemy.active) continue;
+    ++seen;
+
+    if (GetRandomValue(1, seen) == 1) shooter = &enemy;
+  }
+  if (!shooter) return std::nullopt;
+
+  return shooter->pos;
+};

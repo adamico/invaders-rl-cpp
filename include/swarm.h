@@ -1,6 +1,7 @@
 #pragma once
 #include "game.h"
 #include "pool.h"
+#include <optional>
 
 constexpr int MAX_ENEMIES = 55;
 
@@ -13,6 +14,7 @@ public:
 
   bool hasBreached() const { return breached; }
   int activeCount() const { return pool.activeCount(); }
+  std::optional<Vector2> randomShooterPosition() const;
 
   auto begin() { return pool.begin(); }
   auto end() { return pool.end(); }
