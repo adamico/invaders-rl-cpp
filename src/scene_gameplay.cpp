@@ -1,12 +1,10 @@
 #include "scene_gameplay.h"
 
-#include "canvas.h"
 #include "collision.h"
 #include "game.h"
 #include "hud.h"
 #include "projectile_pool.h"
 #include "raylib.h"
-#include "raymath.h"
 #include "scene_gameover.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -58,19 +56,6 @@ void updateEnemyFire(GameState& state, float dt) {
   }
 
   state.enemyFireCooldown = ENEMY_FIRE_COOLDOWN;
-}
-
-void Enemy::moveHorizontally(Vector2 dir, float speed, float deltaTime) {
-  pos = Vector2Add(pos, Vector2Scale(dir, speed * deltaTime));
-}
-
-void Enemy::moveVertically(float amount) { pos.y += amount; }
-
-void Enemy::draw(const Texture2D& texture) const {
-  if (!active) return;
-  Vector2 drawPos = Vector2Add(pos, CANVAS_OFFSET);
-  DrawTextureV(texture, drawPos, WHITE);
-  DrawCircleLinesV(pos, radius, RED);
 }
 
 void detectBulletEnemyCollisions(GameState& state) {
