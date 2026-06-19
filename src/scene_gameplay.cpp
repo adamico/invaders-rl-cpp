@@ -6,8 +6,6 @@
 #include "raylib.h"
 #include "resources.h"
 #include "scene_gameover.h"
-#include <stdarg.h>
-#include <stdio.h>
 
 constexpr float PLAYER_PROJECTILE_RADIUS = 5.0f;
 constexpr float PLAYER_PROJECTILE_SPEED = 500.0f;
@@ -29,6 +27,7 @@ constexpr ProjectileSpec ENEMY_PROJECTILE_SPEC = {
     .flipVertical = true,
 };
 
+namespace {
 void playerShoot(GameState& state) {
   if (!IsKeyPressed(KEY_SPACE)) return;
 
@@ -85,6 +84,7 @@ void detectEnemyBulletPlayerCollisions(GameState& state) {
     }
   }
 }
+} // namespace
 
 void SceneGameplay::enter(GameState& state) {
   state.score = 0;
