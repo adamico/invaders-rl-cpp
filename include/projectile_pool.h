@@ -1,9 +1,9 @@
 #pragma once
 
-#include "game.h"
-#include "pool.h"
 #include "raylib.h"
 
+#include "pool.h"
+#include "projectile.h"
 constexpr int MAX_PROJECTILES = 100;
 constexpr float PROJECTILE_SPEED = 500.0f;
 

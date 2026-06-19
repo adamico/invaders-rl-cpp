@@ -1,16 +1,15 @@
-#include <stdarg.h>
-#include <stdio.h>
-
-#include "raylib.h"
-#include "raymath.h"
+#include "scene_gameplay.h"
 
 #include "canvas.h"
 #include "collision.h"
 #include "game.h"
 #include "hud.h"
 #include "projectile_pool.h"
+#include "raylib.h"
+#include "raymath.h"
 #include "scene_gameover.h"
-#include "scene_gameplay.h"
+#include <stdarg.h>
+#include <stdio.h>
 
 constexpr float PLAYER_PROJECTILE_RADIUS = 5.0f;
 constexpr float PLAYER_PROJECTILE_SPEED = 500.0f;
@@ -48,31 +47,6 @@ void playerShoot(GameState& state) {
 
   if (state.projectilePool.fire(state.player.pos))
     PlaySound(state.resources.laserSound);
-}
-
-void Projectile::spawn(Vector2 from, const ProjectileSpec& spec) {
-  pos = from;
-  this->dir = spec.dir;
-  this->speed = spec.speed;
-  this->radius = spec.radius;
-  this->flipVertical = spec.flipVertical;
-  active = true;
-}
-
-void Projectile::update(float dt) {
-  if (!active) return;
-  pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
-  active = pos.y > 0 && pos.y < GetScreenHeight();
-}
-
-void Projectile::draw(const Texture2D& texture) const {
-  if (!active) return;
-  Rectangle sourceRect = {0.0f, 0.0f, (float)texture.width,
-                          flipVertical ? -(float)texture.height
-                                       : (float)texture.height};
-  Vector2 drawPos = Vector2Add(pos, CANVAS_OFFSET);
-  DrawTextureRec(texture, sourceRect, drawPos, WHITE);
-  DrawCircleLinesV(pos, radius, RED);
 }
 
 void updateEnemyFire(GameState& state, float dt) {

@@ -1,8 +1,8 @@
-#include <cmath>
+#include "player.h"
 
 #include "canvas.h"
-#include "player.h"
 #include "raymath.h"
+#include <cmath>
 
 // public methods
 

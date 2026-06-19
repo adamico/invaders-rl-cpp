@@ -1,4 +1,5 @@
 #include "scene_gameover.h"
+
 #include "scene_title.h"
 
 std::unique_ptr<Scene> SceneGameover::update(GameState& state,

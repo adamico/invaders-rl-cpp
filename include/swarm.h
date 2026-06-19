@@ -1,4 +1,5 @@
 #pragma once
+
 #include "game.h"
 #include "pool.h"
 #include <optional>

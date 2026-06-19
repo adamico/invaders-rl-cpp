@@ -3,7 +3,6 @@
 #include "resource_dir.h"
 #include "scene_manager.h"
 #include "scene_title.h"
-
 #include <stdio.h>
 
 constexpr Vector2 windowSize = {1280, 720};
