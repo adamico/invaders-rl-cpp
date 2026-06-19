@@ -1,16 +1,17 @@
 #include "projectile_pool.h"
 
-void ProjectilePool::reset() {
+void ProjectilePool::reset(ProjectileSpec spec) {
+  this->spec = spec;
   for (auto& projectile : pool) {
     projectile = {.active = false};
   }
 };
 
-bool ProjectilePool::fire(Vector2 from, Vector2 dir, float speed) {
+bool ProjectilePool::fire(Vector2 from) {
   Projectile* projectile = pool.acquire();
   if (!projectile) return false;
 
-  projectile->spawn(from, dir, speed);
+  projectile->spawn(from, spec);
   return true;
 };
 

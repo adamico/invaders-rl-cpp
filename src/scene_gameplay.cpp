@@ -1,4 +1,5 @@
 #include "collision.h"
+#include "game.h"
 #include "raylib.h"
 #include "raymath.h"
 #include <stdarg.h>
@@ -15,11 +16,25 @@ constexpr Vector2 CANVAS_OFFSET = {-CANVAS_SIZE / 2.0f, -CANVAS_SIZE / 2.0f};
 constexpr float PLAYER_RADIUS = 12.5f;
 constexpr float PLAYER_SPEED = 300.0f;
 constexpr int PLAYER_HEALTH = 5;
-
+constexpr float PLAYER_PROJECTILE_RADIUS = 5.0f;
+constexpr float PLAYER_PROJECTILE_SPEED = 500.0f;
 constexpr float ENEMY_FIRE_COOLDOWN = 0.8f;
-constexpr float ENEMY_PROJECTILE_SPEED = 300.0f;
+constexpr float ENEMY_PROJECTILE_RADIUS = 5.0f;
+constexpr float ENEMY_PROJECTILE_SPEED = 350.0f;
 
-constexpr float PROJECTILE_RADIUS = 5.0f;
+constexpr ProjectileSpec PLAYER_PROJECTILE_SPEC = {
+    .radius = PLAYER_PROJECTILE_RADIUS,
+    .speed = PLAYER_PROJECTILE_SPEED,
+    .dir = {0.0f, -1.0f},
+    .flipVertical = false,
+};
+
+constexpr ProjectileSpec ENEMY_PROJECTILE_SPEC = {
+    .radius = ENEMY_PROJECTILE_RADIUS,
+    .speed = ENEMY_PROJECTILE_SPEED,
+    .dir = {0.0f, 1.0f},
+    .flipVertical = true,
+};
 
 void initPlayer(GameState* state) {
   Vector2 startPos = {GetScreenWidth() / 2.0f,
@@ -36,8 +51,8 @@ void initGameplay(GameState* state) {
   state->victory = false;
   initPlayer(state);
   state->swarm.reset();
-  state->projectilePool.reset();
-  state->enemyProjectilePool.reset();
+  state->projectilePool.reset(PLAYER_PROJECTILE_SPEC);
+  state->enemyProjectilePool.reset(ENEMY_PROJECTILE_SPEC);
   state->enemyFireCooldown = ENEMY_FIRE_COOLDOWN;
 }
 
@@ -69,27 +84,32 @@ void Player::draw(const Texture2D& texture) const {
 void playerShoot(GameState& state) {
   if (!IsKeyPressed(KEY_SPACE)) return;
 
-  if (state.projectilePool.fire(state.player.pos, {0.0f, -1.0f}))
+  if (state.projectilePool.fire(state.player.pos))
     PlaySound(state.resources.laserSound);
 }
 
-void Projectile::spawn(Vector2 from, Vector2 dir, float speed) {
+void Projectile::spawn(Vector2 from, const ProjectileSpec& spec) {
   pos = from;
-  this->dir = dir;
-  this->speed = speed;
-  radius = PROJECTILE_RADIUS;
+  this->dir = spec.dir;
+  this->speed = spec.speed;
+  this->radius = spec.radius;
+  this->flipVertical = spec.flipVertical;
   active = true;
 }
 
 void Projectile::update(float dt) {
   if (!active) return;
   pos = Vector2Add(pos, Vector2Scale(dir, speed * dt));
-  active = pos.y > 0;
+  active = pos.y > 0 && pos.y < GetScreenHeight();
 }
 
 void Projectile::draw(const Texture2D& texture) const {
   if (!active) return;
-  drawOffset(texture, pos, WHITE);
+  Rectangle sourceRect = {0.0f, 0.0f, (float)texture.width,
+                          flipVertical ? -(float)texture.height
+                                       : (float)texture.height};
+  Vector2 drawPos = Vector2Add(pos, CANVAS_OFFSET);
+  DrawTextureRec(texture, sourceRect, drawPos, WHITE);
   DrawCircleLinesV(pos, radius, RED);
 }
 
@@ -107,8 +127,7 @@ void updateEnemyFire(GameState& state, float dt) {
   }
 
   if (shooter) {
-    state.enemyProjectilePool.fire(shooter->pos, {0.0f, 1.0f},
-                                   ENEMY_PROJECTILE_SPEED);
+    state.enemyProjectilePool.fire(shooter->pos);
   }
   state.enemyFireCooldown = ENEMY_FIRE_COOLDOWN;
 }

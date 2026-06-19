@@ -86,10 +86,17 @@ waves, swarm speed-up, juice.
     timer + reservoir-pick shooter (Swarm begin/end) + enemy-bullet->player health damage (health now a
     real resource). Hiccup: fired into player pool by mistake -> enemies self-killed (user caught). Mid-
     apply user surfaced telescoping-args smell on fire/spawn -> motivated L19. See LR-0019.
-19. [LESSON DELIVERED L0019, awaiting apply] Introduce Parameter Object: ProjectileSpec{speed,dir,flipV}
-    OWNED by the pool (set once in reset(spec)); fire() collapses to position-only. C++20 designated
-    inits. Folds in 2 bug fixes: directional retire (pos.y>0 leaked downward bullets -> check both edges)
-    + vertical sprite flip (negative source-rect height in DrawTextureRec).
+19. [DONE L0019] Introduce Parameter Object: ProjectileSpec{speed,dir,flipVertical} OWNED by the pool
+    (set once in reset(spec)); fire() collapses to position-only. C++20 designated inits. Fixed directional
+    retire bug (pos.y>0 leaked downward bullets -> both-edge check) + vertical flip (negative source-rect
+    height). User made specs constexpr named constants (nice). Discussed Type Object pattern kinship
+    (this = simplified value-copy form; full form = shared Breed* + data table, YAGNI for 2 kinds). LR-0020.
+20. [LESSON DELIVERED L0020, awaiting apply] Behaviour-on-objects / Tell-Don't-Ask r2, from user's own
+    // REFACTOR breadcrumbs. Player: hp private behind takeDamage(int=1)/die/isAlive/health() (forces
+    Player::reset, aggregate->class consequence). swarm.update bool -> void update + hasBreached() query
+    (Command-Query Separation). Swarm::randomShooterPos()->std::optional<Vector2> (user's SRP catch in
+    updateEnemyFire; new idiom std::optional). Score DELIBERATELY stays int (C.131/YAGNI - the contrast
+    is the lesson). Decision logged: no Score class (user chose) until score grows a rule.
 Possible future arcs (confirm with user before starting a new mission):
 - C++20 concepts (name element requirements); Swarm forwarding own iteration (Demeter); REVISIT RL
   GOAL (mission change per MISSION.md — confirm + new learning record) as C++ refactor arc completes.

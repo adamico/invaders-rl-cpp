@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 20 · Behaviour on objects</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 20 · Design · Tell, don't ask (round 2)</span>
+<h1>Put behaviour where the data lives — when there's a rule to protect</h1>
+<p class="subtitle">You left yourself five <code>// REFACTOR</code> breadcrumbs, and they all say the same thing: the scene reaches in and pokes raw fields — <code>player.health = 0</code>, <code>health -= 1</code>, an opaque <code>swarm.update()</code> bool. The fix is to move the behaviour onto the object that owns the data. But the real lesson is the <em>judgment</em>: which pokes deserve a method, and which (like <code>score</code>) are fine as they are.</p>
+
+<h2>The principle, sharpened</h2>
+<p>"Tell, Don't Ask" (you met it in L12) says: don't pull an object's data out to make a decision the object
+could make itself. But a wrapper for its own sake is just noise (L11 — when <em>not</em> to make a class).
+The sharp version:</p>
+<div class="why-box">
+<strong>Behaviour belongs with data when there's an <em>invariant or rule</em> to protect.</strong>
+<code>player.health</code> has rules — it must never go below zero, "dead" means a specific thing, and there
+should be exactly one definition of taking damage. Those rules deserve methods that own them. A bare
+<code>score</code> counter has <em>no</em> rule — adding points is just <code>+=</code>. Wrapping it buys
+nothing. Same reasoning, opposite conclusions. That contrast IS this lesson.
+</div>
+
+<h2>Part 1 — Player owns its health (the one with rules)</h2>
+<p>Three behaviours, then hide the field behind them. In <code>game.h</code>:</p>
+<pre><span class="cm">// game.h</span>
+struct Player {
+  Vector2 pos{};
+  Vector2 dir{};
+  float speed{};
+  float radius{};
+
+  void reset(Vector2 startPos);            <span class="cm">// NEW: replaces the aggregate init (see note)</span>
+  void update(float deltaTime);
+  void draw(const Texture2D&amp; texture) const;
+
+  void takeDamage(int amount = 1);         <span class="cm">// NEW</span>
+  void die();                              <span class="cm">// NEW</span>
+  bool isAlive() const { return hp &gt; 0; } <span class="cm">// NEW</span>
+  int  health() const { return hp; }       <span class="cm">// NEW: read-only query for the HUD</span>
+
+private:
+  int hp{};                                <span class="cm">// was public `int health` — now behind methods</span>
+};</pre>
+<pre><span class="cm">// scene_gameplay.cpp</span>
+void Player::takeDamage(int amount) {
+  hp -= amount;
+  if (hp &lt; 0) hp = 0;        <span class="cm">// the rule the caller no longer has to know</span>
+}
+
+void Player::die() { hp = 0; }</pre>
+<p><code>takeDamage(int amount = 1)</code> uses a <strong>default argument</strong> — call
+<code>takeDamage()</code> for the common 1-point hit, <code>takeDamage(3)</code> later for a heavy enemy.
+The clamp-at-zero rule lives in exactly one place now.</p>
+
+<div class="why-box">
+<strong>Why a <code>reset()</code> appears.</strong> Making <code>hp</code> private has a consequence: a
+class with a private data member is no longer an <em>aggregate</em>, so the
+<code>(Player){.pos = …, .health = …}</code> designated-initializer in <code>initPlayer</code> stops
+compiling. That's not a wart — it's the same shape as <code>Swarm::reset()</code> and
+<code>ProjectilePool::reset()</code>: once a type has private invariants, <em>it</em> owns its setup.
+Move the init logic in:
+</div>
+<pre><span class="cm">// scene_gameplay.cpp — Player owns its own setup</span>
+void Player::reset(Vector2 startPos) {
+  pos = startPos;
+  dir = {0.0f, 0.0f};
+  speed = PLAYER_SPEED;
+  radius = PLAYER_RADIUS;
+  hp = PLAYER_HEALTH;
+}
+
+<span class="cm">// initGameplay — the free initPlayer() collapses into this</span>
+Vector2 startPos = {GetScreenWidth() / 2.0f, GetScreenHeight() - (PLAYER_RADIUS * 4)};
+state-&gt;player.reset(startPos);</pre>
+
+<h2>Part 2 — the collision sites now <em>tell</em></h2>
+<p>Your three breadcrumbs become method calls. The scene stops knowing <em>how</em> health works:</p>
+<pre><span class="cm">// detectPlayerEnemyCollisions — body-block = instant death</span>
+state.player.die();                  <span class="cm">// was: state.player.health = 0;</span>
+
+<span class="cm">// detectEnemyBulletPlayerCollisions — one bullet, one point</span>
+state.player.takeDamage();           <span class="cm">// was: state.player.health -= 1;</span></pre>
+<p>And the HUD reads through the query: <code>drawHud(state.player.health(), state.score);</code>.</p>
+
+<h2>Part 3 — clarify the opaque <code>swarm.update()</code> bool</h2>
+<p>Your comment: "the return value of <code>swarm.update()</code> is unclear." It returns a bare
+<code>bool</code> that the call site has to <em>remember</em> means "breached." Split the command from the
+query — <code>update</code> advances the swarm (a command, returns nothing); a named query answers the
+question:</p>
+<pre><span class="cm">// swarm.h</span>
+void update(float deltaTime);     <span class="cm">// was: bool update(...)</span>
+bool hasBreached() const { return breached; }   <span class="cm">// NEW: intent-revealing</span>
+private:
+  bool breached{};                <span class="cm">// NEW: set during update()</span></pre>
+<p>In <code>Swarm::update</code>, drop <code>bool breached</code> as a local and set the <em>member</em>
+instead (reset it to <code>false</code> at the top of each update; remove the <code>return</code>). The scene
+reads like prose:</p>
+<pre>state.swarm.update(dt);
+if (state.swarm.hasBreached()) state.player.die();</pre>
+<p>This is <strong>Command-Query Separation</strong>: a method either <em>does</em> something or <em>answers</em>
+something, not both-via-a-cryptic-return. <span class="cite">[<a href="https://martinfowler.com/bliki/CommandQuerySeparation.html">Fowler — CommandQuerySeparation</a>]</span></p>
+
+<h2>Part 4 — selection belongs on the Swarm (and <code>std::optional</code>)</h2>
+<p>You spotted <code>updateEnemyFire</code> doing two jobs: <em>finding</em> a shooter and <em>firing</em>. The
+finding reaches into the swarm's enemies — but the swarm <em>owns</em> the enemies; it should answer "where
+would a shot come from?" Move the reservoir pick onto <code>Swarm</code>, and return only what the caller
+needs — a position, or nothing:</p>
+<pre><span class="cm">// swarm.h</span>
+#include &lt;optional&gt;
+...
+std::optional&lt;Vector2&gt; randomShooterPos() const;   <span class="cm">// NEW</span></pre>
+<pre><span class="cm">// swarm.cpp — the reservoir loop moves here, behind the encapsulation</span>
+std::optional&lt;Vector2&gt; Swarm::randomShooterPos() const {
+  const Enemy* shooter = nullptr;
+  int seen = 0;
+  for (const Enemy&amp; enemy : pool) {
+    if (!enemy.active) continue;
+    ++seen;
+    if (GetRandomValue(1, seen) == 1) shooter = &amp;enemy;
+  }
+  if (!shooter) return std::nullopt;     <span class="cm">// "no active enemies"</span>
+  return shooter-&gt;pos;
+}</pre>
+<p><code>std::optional&lt;Vector2&gt;</code> is "a Vector2, or nothing" expressed <em>in the type</em> — no sentinel
+value, no out-param, no leaking an <code>Enemy*</code> to the caller (the representation stays hidden, as in
+L16). <code>updateEnemyFire</code> shrinks to its one real job:</p>
+<pre>void updateEnemyFire(GameState&amp; state, float dt) {
+  state.enemyFireCooldown -= dt;
+  if (state.enemyFireCooldown &gt; 0.0f) return;
+
+  if (auto pos = state.swarm.randomShooterPos())   <span class="cm">// has_value? then *pos is valid</span>
+    state.enemyProjectilePool.fire(*pos);
+
+  state.enemyFireCooldown = ENEMY_FIRE_COOLDOWN;
+}</pre>
+<p><code>if (auto pos = …)</code> tests the optional's truthiness; <code>*pos</code> unwraps it. Firing logic
+here, selection logic in the swarm — each does one thing. <span class="cite">[<a href="https://en.cppreference.com/w/cpp/utility/optional">cppreference — std::optional</a>]</span></p>
+
+<h2>Part 5 — the one you DON'T do: <code>score</code> stays an <code>int</code></h2>
+<p>Your <code>// REFACTOR: should be state.score.add(...)</code> is a fair instinct toward symmetry — but
+follow the rule from the top of the lesson. Is there an invariant on <code>score</code>? No: it only ever
+goes up, by <code>+=</code>, with no clamp, no derived state, no "you can't do that" rule. A
+<code>Score::add()</code> wrapping a single <code>+=</code> is a trivial getter/setter in disguise — the
+exact thing <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-get">Core Guidelines
+C.131</a> warns against. So leave it:</p>
+<pre>state.score += enemy.scoreValue;     <span class="cm">// deliberately unchanged — no rule to protect</span></pre>
+<p>Knowing when <em>not</em> to add structure is the same skill as knowing when to. Revisit it the day
+<code>score</code> grows a rule — a combo multiplier, or a persisted high-score. Then it earns a class. Not
+before. (YAGNI.)</p>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/game.h</code> — <code>Player</code>: <code>hp</code> private; add <code>reset</code>, <code>takeDamage(int=1)</code>, <code>die</code>, <code>isAlive</code>, <code>health()</code>.</li>
+<li><code>include/swarm.h</code> — <code>#include &lt;optional&gt;</code>; <code>update</code> returns <code>void</code>; add <code>hasBreached() const</code> + private <code>bool breached{}</code>; declare <code>randomShooterPos() const</code>.</li>
+<li><code>src/scene_gameplay.cpp</code> — define <code>Player::reset/takeDamage/die</code>; fold <code>initPlayer</code> into <code>player.reset()</code>; collision sites call <code>die()</code>/<code>takeDamage()</code>; HUD uses <code>health()</code>; <code>updateEnemyFire</code> uses <code>randomShooterPos()</code>; <code>update()</code> uses <code>hasBreached()</code>; leave <code>score +=</code> alone.</li>
+<li><code>src/swarm.cpp</code> — set member <code>breached</code> in <code>update</code> (reset to false at top, no return); move the reservoir loop into <code>randomShooterPos</code>.</li>
+<li>Build &amp; play: identical behaviour; the scene now reads as intent (<code>die()</code>, <code>takeDamage()</code>, <code>hasBreached()</code>), <code>hp</code> is unreachable from outside, and selection lives in the swarm.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) Privatising <code>hp</code> breaks the designated-init in <code>initPlayer</code> — that's expected; the <code>reset()</code> method replaces it. (2) Remove the <code>return breached;</code> AND the local <code>bool breached</code> in <code>update</code>, else the member is shadowed and <code>hasBreached()</code> always reads false. (3) Don't deref an empty optional — gate with <code>if (auto pos = …)</code> before <code>*pos</code>. (4) <code>randomShooterPos</code> is <code>const</code>, so iterate <code>const Enemy&amp;</code> and hold a <code>const Enemy*</code>. (5) Resist wrapping <code>score</code> — the lesson is that NOT every poke becomes a method.</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="1">
+  <div class="q">Why does <code>health</code> earn methods (<code>takeDamage</code>/<code>die</code>) but <code>score</code> doesn't?</div>
+  <button data-fb="No — both are ints; the type isn't the deciding factor.">Because health is more important to gameplay</button>
+  <button data-fb="Right — health has rules to protect (clamp ≥0, a single definition of death); score has none, so a wrapper would be trivial.">health has an invariant to protect; score has no rule, so wrapping it adds nothing</button>
+  <button data-fb="No — encapsulation isn't a popularity contest; it's about invariants.">Because the scene touches health more often</button>
+  <button data-fb="No — both could be private; privacy without a rule to guard is just ceremony.">Private members are always better than public ones</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Splitting <code>bool update()</code> into <code>void update()</code> + <code>bool hasBreached()</code> is an example of…</div>
+  <button data-fb="Right — a method should either do something or answer something, not encode an answer in a cryptic return.">Command-Query Separation</button>
+  <button data-fb="No — there's no inheritance here.">the Template Method pattern</button>
+  <button data-fb="No — nothing is being cached or memoised.">memoisation</button>
+  <button data-fb="No — that's about constructing objects; unrelated.">the Factory pattern</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why return <code>std::optional&lt;Vector2&gt;</code> from <code>randomShooterPos</code> rather than an <code>Enemy*</code>?</div>
+  <button data-fb="No — optional isn't faster; that's not the point.">optional is more performant than a pointer</button>
+  <button data-fb="No — a null pointer can also signal 'none'; the issue is what you expose.">Only optional can represent 'no enemy'</button>
+  <button data-fb="Right — the caller needs only a position; returning a pointer would leak a mutable Enemy and re-expose the swarm's hidden representation.">It gives the caller exactly what it needs without leaking the swarm's internal Enemy</button>
+  <button data-fb="No — optional doesn't remove the need to check; you still gate with if.">It means you never have to check for emptiness</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Primary source:</strong> <a href="https://martinfowler.com/bliki/TellDontAsk.html">Fowler — TellDontAsk</a>
+&amp; <a href="https://martinfowler.com/bliki/CommandQuerySeparation.html">CommandQuerySeparation</a>;
+<a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-get">Core Guidelines C.131 (avoid trivial getters/setters)</a>
+and <a href="https://en.cppreference.com/w/cpp/utility/optional">std::optional</a>. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: should <code>die()</code> and <code>takeDamage()</code> trigger
+effects (sound, screen-shake) themselves, or is that the scene's job (who owns feedback)? Is
+<code>health()</code> as a public query a small Tell-Don't-Ask leak, or legitimate because the HUD genuinely
+needs the number to render? And next finishing feature: <strong>real lives + respawn</strong> (now that
+<code>takeDamage</code>/<code>isAlive</code> exist, this is a short step), or <strong>bunkers</strong>?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0019-projectile-spec.html">Lesson 19: ProjectileSpec</a></span>
+  <span>Your <code>// REFACTOR</code> notes, paid off.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 20 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
