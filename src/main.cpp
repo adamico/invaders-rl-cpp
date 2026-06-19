@@ -23,9 +23,8 @@ int main() {
   InitAudioDevice();
 
   GameState state = {};
-  initGameplay(&state);
 
-  SceneManager scenes(std::make_unique<SceneTitle>());
+  SceneManager scenes(std::make_unique<SceneTitle>(), state);
 
   while (!WindowShouldClose()) {
     scenes.tick(state, GetFrameTime());

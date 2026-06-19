@@ -5,7 +5,6 @@
 std::unique_ptr<Scene> SceneGameover::update(GameState& state,
                                              float deltaTime) {
   if (IsKeyPressed(KEY_ENTER)) {
-    initGameplay(&state);
     return std::make_unique<SceneTitle>();
   }
   return nullptr;

@@ -7,5 +7,4 @@ struct SceneTitle : Scene {
   void draw(const GameState& state) const override;
 };
 
-void initGameplay(GameState* state);
 void centerText(const char* text, int yPos, int fontSize, Color textColor);

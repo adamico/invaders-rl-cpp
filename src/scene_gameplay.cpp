@@ -29,17 +29,6 @@ constexpr ProjectileSpec ENEMY_PROJECTILE_SPEC = {
     .flipVertical = true,
 };
 
-void initGameplay(GameState* state) {
-  state->score = 0;
-  state->victory = false;
-
-  state->player.reset();
-  state->swarm.reset();
-  state->projectilePool.reset(PLAYER_PROJECTILE_SPEC);
-  state->enemyProjectilePool.reset(ENEMY_PROJECTILE_SPEC);
-  state->enemyFireCooldown = ENEMY_FIRE_COOLDOWN;
-}
-
 void playerShoot(GameState& state) {
   if (!IsKeyPressed(KEY_SPACE)) return;
 
@@ -95,6 +84,17 @@ void detectEnemyBulletPlayerCollisions(GameState& state) {
       state.player.takeDamage();
     }
   }
+}
+
+void SceneGameplay::enter(GameState& state) {
+  state.score = 0;
+  state.victory = false;
+
+  state.player.reset();
+  state.swarm.reset();
+  state.projectilePool.reset(PLAYER_PROJECTILE_SPEC);
+  state.enemyProjectilePool.reset(ENEMY_PROJECTILE_SPEC);
+  state.enemyFireCooldown = ENEMY_FIRE_COOLDOWN;
 }
 
 std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
