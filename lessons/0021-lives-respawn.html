@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 21 · Lives &amp; respawn</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<span class="tag">Lesson 21 · Gameplay · Lives &amp; respawn</span>
+<h1>Three lives, a respawn, and a moment of mercy</h1>
+<p class="subtitle">Right now one depleted health bar ends the run. Real Space Invaders gives you lives: lose your health, respawn, try again — with a brief flicker of invulnerability so you're not instantly shot again. The good news: you built the foundation in L20. <code>takeDamage</code>, <code>die</code>, <code>isAlive</code> already exist. We're growing <code>Player</code> from "has health" into a small, self-contained state machine — and keeping every rule behind its interface.</p>
+
+<h2>The model: two layers of "alive"</h2>
+<p>The key design idea is distinguishing two questions that <code>isAlive()</code> currently conflates:</p>
+<table>
+<tr><th>Question</th><th>Means</th><th>Driven by</th></tr>
+<tr><td><code>isAlive()</code></td><td>is this <em>life</em> still going?</td><td><code>hp &gt; 0</code></td></tr>
+<tr><td><code>isGameOver()</code></td><td>is the <em>run</em> over?</td><td><code>lives &lt;= 0</code></td></tr>
+</table>
+<p>Losing all <code>hp</code> no longer ends the game — it <em>spends a life</em> and respawns. The run ends only
+when lives run out. The scene will transition on <code>isGameOver()</code>, not <code>!isAlive()</code>.</p>
+
+<h2>Step 1 — grow the Player's private state</h2>
+<p>Three new private members; all the existing public methods stay, plus two queries and a private helper.
+<code>Player</code> owns the respawn position now (it needs it to put itself back):</p>
+<pre><span class="cm">// game.h</span>
+class Player {
+public:
+  Vector2 pos{};
+  Vector2 dir{};
+  float speed{};
+  float radius{};
+
+  void reset(Vector2 startPosition);     <span class="cm">// new game: full lives + spawn</span>
+  void update(float deltaTime);
+  void draw(const Texture2D&amp; texture) const;
+  void takeDamage(int amount = 1);
+  void die();
+
+  bool isAlive() const { return hp &gt; 0; }
+  bool isVulnerable() const { return invulnerableTimer &lt;= 0.0f; }   <span class="cm">// NEW</span>
+  bool isGameOver() const { return lives &lt;= 0; }                    <span class="cm">// NEW</span>
+  int  health() const { return hp; }
+  int  livesRemaining() const { return lives; }                    <span class="cm">// NEW (HUD)</span>
+
+private:
+  void respawn();                        <span class="cm">// NEW: internal — not part of the public interface</span>
+
+  int hp{};
+  int lives{};                           <span class="cm">// NEW</span>
+  float invulnerableTimer{};             <span class="cm">// NEW: seconds of mercy remaining</span>
+  Vector2 startPosition{};               <span class="cm">// NEW: where to respawn</span>
+};</pre>
+<div class="why-box">
+<strong>Public vs private interface.</strong> <code>respawn()</code> is <code>private</code> on purpose. It's a
+mechanism the player triggers <em>internally</em> (after losing a life) — nothing outside should be able to
+say "respawn now." The public surface stays small and intention-revealing (<code>takeDamage</code>,
+<code>die</code>, the queries); the moving parts hide behind it. This is the L16 lesson applied to behaviour,
+not just data.
+</div>
+
+<h2>Step 2 — the life-cycle methods</h2>
+<p>Add the constants by the other gameplay ones, then wire the state transitions. Notice <code>reset</code>
+and <code>respawn</code> share the spawn logic, so <code>reset</code> stores the position and delegates:</p>
+<pre>constexpr int PLAYER_LIVES = 3;
+constexpr float INVULNERABILITY_TIME = 2.0f;</pre>
+<pre><span class="cm">// scene_gameplay.cpp</span>
+void Player::reset(Vector2 start) {
+  startPosition = start;
+  speed = PLAYER_SPEED;
+  radius = PLAYER_RADIUS;
+  lives = PLAYER_LIVES;
+  respawn();                       <span class="cm">// position + hp + mercy window</span>
+}
+
+void Player::respawn() {
+  pos = startPosition;
+  dir = {0.0f, 0.0f};
+  hp = PLAYER_HEALTH;
+  invulnerableTimer = INVULNERABILITY_TIME;
+}
+
+void Player::takeDamage(int amount) {
+  if (!isVulnerable()) return;     <span class="cm">// mercy: ignore hits right after respawn</span>
+  hp -= amount;
+  if (hp &lt;= 0) {
+    hp = 0;
+    loseLife();
+  }
+}
+
+void Player::die() {               <span class="cm">// breach / body-block: skip hp, spend a life now</span>
+  hp = 0;
+  loseLife();
+}
+
+void Player::loseLife() {
+  --lives;
+  if (lives &gt; 0) respawn();        <span class="cm">// still have lives -> back in; else stay dead (isGameOver)</span>
+}</pre>
+<p>(Add <code>void loseLife();</code> to the private section too.) Trace it: a bullet hit while vulnerable drops
+<code>hp</code>; when <code>hp</code> hits 0, <code>loseLife</code> decrements <code>lives</code> and either
+respawns (lives left) or leaves the player dead with <code>lives == 0</code> → <code>isGameOver()</code> true.</p>
+
+<h2>Step 3 — tick the mercy timer</h2>
+<p>The invulnerability window counts down in <code>update</code> — the same accumulator pattern as the enemy
+fire cooldown. One line at the end of <code>Player::update</code>:</p>
+<pre>void Player::update(float dt) {
+  <span class="cm">// ...existing movement code unchanged...</span>
+  if (invulnerableTimer &gt; 0.0f) invulnerableTimer -= dt;
+}</pre>
+
+<h2>Step 4 — show the mercy: blink while invulnerable</h2>
+<p>A respawned player should visibly flicker so the player understands they're briefly safe. Skip drawing on
+alternating slices of time using <code>fmodf</code> (floating-point modulo, from <code>&lt;cmath&gt;</code>):</p>
+<pre><span class="cm">// scene_gameplay.cpp — add #include &lt;cmath&gt; at the top</span>
+void Player::draw(const Texture2D&amp; texture) const {
+  <span class="cm">// blink: while invulnerable, hide for every other 0.1s slice</span>
+  if (!isVulnerable() &amp;&amp; fmodf(invulnerableTimer, 0.2f) &gt; 0.1f) return;
+
+  drawOffset(texture, pos, WHITE);
+  DrawCircleLinesV(pos, radius, RED);
+}</pre>
+<p>(<code>!isVulnerable()</code> means "currently in the mercy window"; the <code>fmodf</code> term toggles
+roughly five times a second. When the timer expires, <code>isVulnerable()</code> is true and the guard never
+fires, so the player draws solid again.)</p>
+
+<h2>Step 5 — the scene transitions on game-over, and the HUD shows lives</h2>
+<p>Swap the end-of-life check for the end-of-run check, and pass lives to the HUD:</p>
+<pre><span class="cm">// SceneGameplay::update — the transition condition</span>
+if (state.victory || state.player.isGameOver())      <span class="cm">// was: !state.player.isAlive()</span>
+  return std::make_unique&lt;SceneGameover&gt;();
+
+<span class="cm">// SceneGameplay::draw</span>
+drawHud(state.player.health(), state.player.livesRemaining(), state.score);</pre>
+<p>Extend the HUD (a free function over primitives — still no game types, per L11):</p>
+<pre><span class="cm">// hud.h</span>
+void drawHud(int health, int lives, int score);
+
+<span class="cm">// hud.cpp — add a lives readout</span>
+DrawText(TextFormat("Lives: %i", lives), HUD_MARGIN, GetScreenHeight() - HUD_MARGIN * 4,
+         HUD_FONT_SIZE, HUD_TEXT_COLOR);</pre>
+
+<h2>Files you'll touch (checklist)</h2>
+<ol class="steps">
+<li><code>include/game.h</code> — add <code>isVulnerable</code>, <code>isGameOver</code>, <code>livesRemaining</code> queries; private <code>respawn()</code>, <code>loseLife()</code>, <code>lives</code>, <code>invulnerableTimer</code>, <code>startPosition</code>.</li>
+<li><code>src/scene_gameplay.cpp</code> — <code>#include &lt;cmath&gt;</code>; constants <code>PLAYER_LIVES</code>/<code>INVULNERABILITY_TIME</code>; rewrite <code>reset</code>, add <code>respawn</code>/<code>loseLife</code>, update <code>takeDamage</code>/<code>die</code>; tick the timer in <code>update</code>; blink in <code>draw</code>; transition on <code>isGameOver()</code>; pass lives to <code>drawHud</code>.</li>
+<li><code>include/hud.h</code> + <code>src/hud.cpp</code> — add the <code>lives</code> parameter + a readout.</li>
+<li>Build &amp; play: lose all 5 hp → flicker + respawn at start, two more times; HUD shows 3→2→1; the run ends only when lives hit 0; you can't be killed during the flicker.</li>
+</ol>
+
+<blockquote><strong>Traps:</strong> (1) Store <code>startPosition</code> in <code>reset</code> before calling
+<code>respawn</code> — otherwise the first respawn sends the player to {0,0}. (2) <code>die()</code>
+deliberately bypasses the <code>isVulnerable</code> check (a breach should always cost a life) — but routes
+through <code>loseLife</code> so it can't skip the lives accounting. (3) Gate the transition on
+<code>isGameOver()</code>, not <code>!isAlive()</code> — the latter is now true on every respawn frame and
+would end the game instantly. (4) <code>fmodf</code> needs <code>&lt;cmath&gt;</code>; plain <code>fmod</code>
+is the double version (works, but match the float).</blockquote>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-answer="2">
+  <div class="q">Why split <code>isAlive()</code> (hp&gt;0) from a new <code>isGameOver()</code> (lives&lt;=0)?</div>
+  <button data-fb="No — both are cheap boolean reads; performance isn't the point.">isGameOver() is faster to evaluate</button>
+  <button data-fb="No — they answer different questions; one can't replace the other.">They're equivalent; isGameOver is just clearer naming</button>
+  <button data-fb="Right — losing a life (hp→0) must not end the run; only running out of lives does. Two distinct conditions.">'this life ended' and 'the run ended' are different events; respawn happens between them</button>
+  <button data-fb="No — isAlive is still used (to decide whether to respawn); it isn't dead code.">isAlive() is now unused and should be deleted</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <div class="q">Why is <code>respawn()</code> private?</div>
+  <button data-fb="Right — it's an internal mechanism triggered by losing a life; no external caller should force a respawn. Keeps the public surface intentional.">It's an internal transition; nothing outside should be able to trigger it</button>
+  <button data-fb="No — private vs public doesn't change inlining or speed here.">Private methods run faster</button>
+  <button data-fb="No — it can call other members regardless of its own access level.">So it can access other private members</button>
+  <button data-fb="No — there's no such requirement; const-ness is unrelated to access.">Because it must be const</button>
+  <div class="fb"></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <div class="q">What does the <code>if (!isVulnerable()) return;</code> guard in <code>takeDamage</code> achieve?</div>
+  <button data-fb="No — it doesn't grant lives; it ignores damage during the window.">It gives the player an extra life</button>
+  <button data-fb="Right — during the post-respawn mercy window, incoming hits are ignored so the player isn't instantly killed again.">It makes the player ignore hits during the brief invulnerability window</button>
+  <button data-fb="No — movement is in update() and isn't affected by this guard.">It freezes the player's movement</button>
+  <button data-fb="No — die() intentionally bypasses it; it's not global immunity.">It makes the player immune to everything, including breaches</button>
+  <div class="fb"></div>
+</div>
+
+<h2>Read this next</h2>
+<p><strong>Reference:</strong> <a href="https://gameprogrammingpatterns.com/state.html">Game Programming Patterns — State</a>
+(modelling alive/invulnerable/dead as data-driven state), the <a href="https://www.raylib.com/cheatsheet/cheatsheet.html">raylib cheatsheet</a>
+(<code>GetFrameTime</code>), and <a href="https://en.cppreference.com/w/cpp/numeric/math/fmod">cppreference — fmod/fmodf</a>. See <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+
+<div class="ask">
+<strong>Ask me anything.</strong> Good questions: is the timer-based state (hp / lives / invulnerableTimer)
+clean, or has <code>Player</code> grown enough rules to deserve an explicit <code>enum class PlayerState
+{ Alive, Invulnerable, Dead }</code>? Should the respawn flicker be a colour/alpha fade rather than a hard
+blink (and does that belong in <code>draw</code> or a separate effect)? And next finishing feature:
+<strong>waves</strong> (clear the swarm → a faster, lower wave) or <strong>bunkers</strong>?
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0020-behaviour-on-objects.html">Lesson 20: behaviour on objects</a></span>
+  <span>The game is starting to feel like a game.</span>
+</nav>
+
+<footer>Invaders C++ · Lesson 21 · tied to <a href="../MISSION.md">the mission</a></footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -99,7 +99,15 @@ waves, swarm speed-up, juice.
     nullopt guard was inside the reservoir loop -> moved after. Deferred: feedback(sound/shake) stays in
     scene not entity (model vs view) -> seeds a future "juice" arc. See LR-0021.
 
-NEXT (Phase 2, user's pick pending): real lives+respawn (short now - takeDamage/isAlive exist) OR bunkers.
+21b. [DONE, inline refactor not numbered lesson] Promote Player to own TU: player.h (self-contained, owns
+    PLAYER_* constants) + player.cpp (all Player::* defs moved out of scene_gameplay.cpp) + NEW canvas.h
+    (shared CANVAS_* render constants, avoids coupling Player to kitchen-sink game.h). Header = dependency
+    surface; constexpr@namespace = internal linkage (safe in headers); owner-owns-its-constants. User took
+    the clean option: Player::reset() now no-arg + self-places (scene's PLAYER_RADIUS leak gone). Basis:
+    CG SF.11/SF.2/SF.10 + Lakos. See LR-0022.
+
+NEXT (Phase 2, user's pick pending): real lives+respawn (L21 delivered, awaiting apply - lands in
+player.h/.cpp now) OR bunkers.
 Future presentation arc: "juice" (screen-shake/hit-flash/sound) at the collision sites; takeDamage() could
 return whether damage applied so scene drives feedback. Type Object full form if weapon/enemy variety grows.
 Possible future arcs (confirm with user before starting a new mission):
