@@ -36,20 +36,25 @@ constexpr ProjectileSpec ENEMY_PROJECTILE_SPEC = {
     .flipVertical = true,
 };
 
-void initPlayer(GameState* state) {
-  Vector2 startPos = {GetScreenWidth() / 2.0f,
-                      GetScreenHeight() - (PLAYER_RADIUS * 4)};
-  state->player = (Player){.pos = startPos,
-                           .dir = {0.0f, 0.0f},
-                           .speed = PLAYER_SPEED,
-                           .radius = PLAYER_RADIUS,
-                           .health = PLAYER_HEALTH};
+void drawOffset(Texture2D texture, Vector2 pos, Color tint) {
+  Vector2 drawPos = Vector2Add(pos, CANVAS_OFFSET);
+  DrawTextureV(texture, drawPos, tint);
+}
+
+void Player::reset(Vector2 startPosition) {
+  pos = startPosition;
+  dir = {0.0f, 0.0f};
+  speed = PLAYER_SPEED;
+  radius = PLAYER_RADIUS;
+  hp = PLAYER_HEALTH;
 }
 
 void initGameplay(GameState* state) {
   state->score = 0;
   state->victory = false;
-  initPlayer(state);
+  Vector2 playerStartPosition = {GetScreenWidth() / 2.0f,
+                                 GetScreenHeight() - (PLAYER_RADIUS * 4)};
+  state->player.reset(playerStartPosition);
   state->swarm.reset();
   state->projectilePool.reset(PLAYER_PROJECTILE_SPEC);
   state->enemyProjectilePool.reset(ENEMY_PROJECTILE_SPEC);
@@ -71,10 +76,12 @@ void Player::update(float dt) {
       (Vector2){GetScreenWidth() - radius, GetScreenHeight() - radius});
 };
 
-void drawOffset(Texture2D texture, Vector2 pos, Color tint) {
-  Vector2 drawPos = Vector2Add(pos, CANVAS_OFFSET);
-  DrawTextureV(texture, drawPos, tint);
+void Player::takeDamage(int amount) {
+  hp -= amount;
+  if (hp < 0) hp = 0;
 }
+
+void Player::die() { hp = 0; }
 
 void Player::draw(const Texture2D& texture) const {
   drawOffset(texture, pos, WHITE);
@@ -168,8 +175,7 @@ void detectPlayerEnemyCollisions(GameState& state) {
 
     if (overlaps(state.player, enemy)) {
       state.swarm.deactivate(enemy);
-      // REFACTOR: should be state.player.die();
-      state.player.health = 0;
+      state.player.die();
     }
   }
 }
@@ -180,8 +186,7 @@ void detectEnemyBulletPlayerCollisions(GameState& state) {
 
     if (overlaps(state.player, bullet)) {
       bullet.deactivate();
-      // REFACTOR: should be state.player.takeDamage();
-      state.player.health -= 1;
+      state.player.takeDamage();
     }
   }
 }
@@ -189,7 +194,7 @@ void detectEnemyBulletPlayerCollisions(GameState& state) {
 std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
   // REFACTOR: the return value of swarm.update() is unclear
   // REFACTOR: should be state.player.die();
-  if (state.swarm.update(dt)) state.player.health = 0;
+  if (state.swarm.update(dt)) state.player.die();
   state.player.update(dt);
   playerShoot(state);
   updateEnemyFire(state, dt);
@@ -200,7 +205,7 @@ std::unique_ptr<Scene> SceneGameplay::update(GameState& state, float dt) {
   detectEnemyBulletPlayerCollisions(state);
 
   if (state.swarm.activeCount() <= 0) state.victory = true;
-  if (state.victory || state.player.health <= 0)
+  if (state.victory || !state.player.isAlive())
     return std::make_unique<SceneGameover>();
 
   return nullptr;
@@ -214,7 +219,7 @@ void SceneGameplay::draw(const GameState& state) const {
   state.swarm.draw(state.resources.enemyTexture);
   state.projectilePool.draw(state.resources.laserTexture);
   state.enemyProjectilePool.draw(state.resources.laserTexture);
-  drawHud(state.player.health, state.score);
+  drawHud(state.player.health(), state.score);
 
   EndDrawing();
 }
