@@ -91,12 +91,17 @@ waves, swarm speed-up, juice.
     retire bug (pos.y>0 leaked downward bullets -> both-edge check) + vertical flip (negative source-rect
     height). User made specs constexpr named constants (nice). Discussed Type Object pattern kinship
     (this = simplified value-copy form; full form = shared Breed* + data table, YAGNI for 2 kinds). LR-0020.
-20. [LESSON DELIVERED L0020, awaiting apply] Behaviour-on-objects / Tell-Don't-Ask r2, from user's own
-    // REFACTOR breadcrumbs. Player: hp private behind takeDamage(int=1)/die/isAlive/health() (forces
-    Player::reset, aggregate->class consequence). swarm.update bool -> void update + hasBreached() query
-    (Command-Query Separation). Swarm::randomShooterPos()->std::optional<Vector2> (user's SRP catch in
-    updateEnemyFire; new idiom std::optional). Score DELIBERATELY stays int (C.131/YAGNI - the contrast
-    is the lesson). Decision logged: no Score class (user chose) until score grows a rule.
+20. [DONE L0020] Behaviour-on-objects / Tell-Don't-Ask r2, from user's own // REFACTOR breadcrumbs. 3
+    commits: (1) Player hp private behind takeDamage(int=1)/die/isAlive/health() -> forced Player::reset
+    (aggregate->class consequence); (2) swarm.update bool -> void update + hasBreached() query (CQS);
+    (3) Swarm::randomShooterPosition()->std::optional<Vector2> (user's SRP catch; new idiom std::optional).
+    Score DELIBERATELY stays int (C.131/YAGNI - contrast IS the lesson). Review caught a null-deref:
+    nullopt guard was inside the reservoir loop -> moved after. Deferred: feedback(sound/shake) stays in
+    scene not entity (model vs view) -> seeds a future "juice" arc. See LR-0021.
+
+NEXT (Phase 2, user's pick pending): real lives+respawn (short now - takeDamage/isAlive exist) OR bunkers.
+Future presentation arc: "juice" (screen-shake/hit-flash/sound) at the collision sites; takeDamage() could
+return whether damage applied so scene drives feedback. Type Object full form if weapon/enemy variety grows.
 Possible future arcs (confirm with user before starting a new mission):
 - C++20 concepts (name element requirements); Swarm forwarding own iteration (Demeter); REVISIT RL
   GOAL (mission change per MISSION.md — confirm + new learning record) as C++ refactor arc completes.
