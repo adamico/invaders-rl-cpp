@@ -1,5 +1,6 @@
 #include "scene_gameplay.h"
 
+#include "bunker.h"
 #include "collision.h"
 #include "hud.h"
 #include "projectile_pool.h"
@@ -119,6 +120,17 @@ void detectEnemyBlockCollisions(GameState& state) {
   }
 }
 
+void createBunkers(GameState& state) {
+  float bunkerY = GetScreenHeight() - BUNKER_Y_OFFSET;
+  float bunkerWidth = MAX_BLOCK_PER_ROW * BLOCK_SIZE;
+  float bunkerSpacing =
+      (GetScreenWidth() - (bunkerWidth * BUNKER_NUMBER)) / (BUNKER_NUMBER + 1);
+  for (int bunkerIndex = 0; bunkerIndex < BUNKER_NUMBER; ++bunkerIndex) {
+    state.bunkers[bunkerIndex].reset(
+        {bunkerSpacing + (bunkerWidth + bunkerSpacing) * bunkerIndex, bunkerY});
+  }
+}
+
 } // namespace
 
 void SceneGameplay::enter(GameState& state) {
@@ -127,18 +139,7 @@ void SceneGameplay::enter(GameState& state) {
 
   state.player.reset();
   state.swarm.reset();
-  float bunkerY = GetScreenHeight() - 220.0f;
-  float bunkerSpacing = 300.0f;
-  float bunkerWidth = MAX_BLOCK_PER_ROW * BLOCK_SIZE;
-  float bunkersWidth =
-      (bunkerWidth * BUNKER_NUMBER) + (bunkerSpacing * (BUNKER_NUMBER - 1));
-  float offsetX = (GetScreenWidth() - bunkersWidth) / 2.0f;
-  Vector2 startBunkerPos = {offsetX, bunkerY};
-  for (int bunkerIndex = 0; bunkerIndex < BUNKER_NUMBER; ++bunkerIndex) {
-    state.bunkers[bunkerIndex].reset(
-        {startBunkerPos.x + (bunkerWidth + bunkerSpacing) * bunkerIndex,
-         startBunkerPos.y});
-  }
+  createBunkers(state);
   state.projectilePool.reset(PLAYER_PROJECTILE_SPEC);
   state.enemyProjectilePool.reset(ENEMY_PROJECTILE_SPEC);
   state.enemyFireCooldown = ENEMY_FIRE_COOLDOWN;

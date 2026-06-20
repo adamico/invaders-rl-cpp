@@ -3,7 +3,9 @@
 #include "pool.h"
 #include <raylib.h>
 
-constexpr int BUNKER_NUMBER = 3;
+constexpr int BUNKER_NUMBER = 4;
+constexpr float BUNKER_Y_OFFSET = 220.0f;
+
 constexpr int MAX_BLOCKS = 24;
 constexpr int MAX_BLOCK_PER_ROW = 6;
 constexpr int BLOCK_SIZE = 16.0f;

@@ -10,7 +10,7 @@ struct GameState {
   Player player;
   ProjectilePool projectilePool;
   ProjectilePool enemyProjectilePool;
-  std::array<Bunker, 3> bunkers;
+  std::array<Bunker, 4> bunkers;
   Swarm swarm;
   bool victory;
   GameResources resources;
