@@ -3,10 +3,10 @@
 constexpr int MAX_ENEMIES_PER_ROW = 11;
 constexpr int COL_PADDING = 80;
 constexpr int ROW_PADDING = 60;
-constexpr float ENEMY_SPEED = 30.0f;
+constexpr float ENEMY_SPEED = 50.0f;
 constexpr float ENEMY_RADIUS = 15.0f;
 constexpr int ENEMY_SCORE_VALUE = 100;
-constexpr float ENEMY_VERTICAL_MOVEMENT = ROW_PADDING / 2.0f;
+constexpr float ENEMY_VERTICAL_MOVEMENT = ROW_PADDING / 4.0f;
 
 void Swarm::reset() {
   direction = {1.0f, 0.0f};
