@@ -1,16 +1,24 @@
 #include "bunker.h"
 #include "raylib.h"
+#include <array>
 
 void Bunker::reset(Vector2 origin) {
-  for (int blockIndex = 0; blockIndex < MAX_BLOCKS; ++blockIndex) {
-    int col = blockIndex % MAX_BLOCK_PER_ROW;
-    int row = blockIndex / MAX_BLOCK_PER_ROW;
+  std::array<int, MAX_BLOCKS> blockGrid = {
+      0, 1, 1, 1, 1, 0,
+      1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1,
+      1, 1, 0, 0, 1, 1,
+  };
+  for (int gridPosition = 0; gridPosition < MAX_BLOCKS; ++gridPosition) {
+    int col = gridPosition % MAX_BLOCK_PER_ROW;
+    int row = gridPosition / MAX_BLOCK_PER_ROW;
 
-    Block& block = pool[blockIndex];
+    Block& block = pool[gridPosition];
+
     block = {
         .pos = {origin.x + (col * BLOCK_SIZE), origin.y + (row * BLOCK_SIZE)},
         .radius = BLOCK_SIZE / 2.0f,
-        .active = true};
+        .active = blockGrid[gridPosition] == 1};
   }
 };
 
